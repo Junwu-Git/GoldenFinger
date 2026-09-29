@@ -92,10 +92,17 @@
 
         <div class="gf-view-title">
           <span>{{ t`系统动态` }}</span>
-          <button class="gf-link-btn" @click="openPage('log')">{{ t`全部` }} <i class="fa-solid fa-angle-right"></i></button>
+          <button class="gf-link-btn" @click="openPage('log')">
+            {{ t`全部` }} <i class="fa-solid fa-angle-right"></i>
+          </button>
         </div>
         <div v-if="game.state.log.length > 0" class="gf-recent-log">
-          <div v-for="(entry, index) in game.state.log.slice(0, 5)" :key="entry.time + '-' + index" class="gf-log" :class="entry.kind">
+          <div
+            v-for="(entry, index) in game.state.log.slice(0, 5)"
+            :key="entry.time + '-' + index"
+            class="gf-log"
+            :class="entry.kind"
+          >
             <span class="gf-log-time">{{ formatTime(entry.time) }}</span>
             <span>{{ entry.text }}</span>
           </div>

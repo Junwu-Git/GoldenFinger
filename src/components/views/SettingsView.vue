@@ -10,7 +10,12 @@
       <div class="gf-setting-desc">
         {{ t`启用中的模块按顺序拼装后注入给正文 AI，双花括号变量会在注入时填充实际状态。` }}
       </div>
-      <div v-for="(module, index) in settings.promptModules" :key="module.id" class="gf-pm-card" :class="{ off: !module.enabled }">
+      <div
+        v-for="(module, index) in settings.promptModules"
+        :key="module.id"
+        class="gf-pm-card"
+        :class="{ off: !module.enabled }"
+      >
         <div class="gf-pm-head">
           <label class="checkbox_label gf-pm-toggle">
             <input v-model="module.enabled" type="checkbox" />

@@ -72,7 +72,10 @@ async function activate(candidate: SystemDef): Promise<void> {
 
 async function deactivate(): Promise<void> {
   const context = window.SillyTavern?.getContext?.();
-  const result = await context?.callGenericPopup?.(t`解绑系统？游玩数据会保留，重新绑定会重置。`, context.POPUP_TYPE.CONFIRM);
+  const result = await context?.callGenericPopup?.(
+    t`解绑系统？游玩数据会保留，重新绑定会重置。`,
+    context.POPUP_TYPE.CONFIRM,
+  );
   if (result !== context?.POPUP_RESULT?.AFFIRMATIVE) {
     return;
   }
