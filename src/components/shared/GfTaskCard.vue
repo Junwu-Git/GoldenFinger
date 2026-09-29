@@ -18,11 +18,9 @@
       >{{ rewardText(task) }}
     </div>
     <div v-if="!closed" class="gf-task-actions">
-      <button class="gf-mini-btn ok" @click="$emit('settle', task.id, 'completed')">
-        <i class="fa-solid fa-check"></i> {{ t`完成` }}
-      </button>
-      <button class="gf-mini-btn bad" @click="$emit('settle', task.id, 'failed')">
-        <i class="fa-solid fa-xmark"></i> {{ t`失败` }}
+      <!-- 只允许放弃：完成判定唯一来自剧情 AI 的 [任务完成:Txxx] 标记，玩家不能自我结算 -->
+      <button class="gf-mini-btn bad" :title="t`放弃后奖励作废`" @click="$emit('abandon', task.id)">
+        <i class="fa-solid fa-flag"></i> {{ t`放弃` }}
       </button>
     </div>
   </div>
@@ -39,6 +37,6 @@ defineProps<{
 }>();
 
 defineEmits<{
-  settle: [taskId: string, status: 'completed' | 'failed'];
+  abandon: [taskId: string];
 }>();
 </script>

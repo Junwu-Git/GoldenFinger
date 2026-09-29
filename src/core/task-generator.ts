@@ -46,6 +46,7 @@ export async function generateTaskViaApi(
     content: [
       `你在一部互动小说中扮演绑定于主角的「金手指」——「${system.name}」。`,
       system.persona,
+      `你发布的每一个任务都必须体现「${system.name}」的核心设定与风格。`,
       system.taskHint,
       `货币名称（奖励里必须严格使用）：${system.currencyName}`,
       TASK_JSON_INSTRUCTIONS,
@@ -65,7 +66,10 @@ export async function generateTaskViaApi(
         '【最近剧情】',
         story || '（暂无剧情：请发布一个引导宿主迈出第一步的初始任务。）',
         '',
-        '请根据世界观与最近剧情的走向，发布一个与当前情境有机衔接、能推动剧情的新任务。只输出 JSON 对象本身。',
+        '【任务风格（必须严格遵守）】',
+        system.taskHint,
+        '',
+        `请以「${system.name}」的身份与设定，结合世界观与最近剧情，发布一个严格符合上述风格、与当前情境有机衔接的新任务；宁可贴合风格，也不要发布与该风格无关的泛泛任务。只输出 JSON 对象本身。`,
       ].join('\n'),
     ),
   };

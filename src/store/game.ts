@@ -151,9 +151,10 @@ export const useGameStore = defineStore('golden_finger_game', () => {
 
   /**
    * 设置任务状态并结算奖励。
+   * 完成的唯一入口是剧情 AI 的判定标记；玩家面板只能放弃（source='manual'）。
    * @returns 任务是否存在且为 active（判定标记解析依赖它做幂等）
    */
-  function setTaskStatus(taskId: string, status: TaskStatus): boolean {
+  function setTaskStatus(taskId: string, status: TaskStatus, source: 'marker' | 'manual' = 'marker'): boolean {
     const task = state.value.tasks.find(item => item.id === taskId && item.status === 'active');
     if (!task) {
       return false;
@@ -162,6 +163,9 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     task.closedAt = Date.now();
     if (status === 'completed') {
       settleRewards(task);
+    } else if (source === 'manual') {
+      log('system', t`放弃了任务 ${task.id}《${task.title}》，奖励作废。`);
+      toastr.info(t`已放弃任务「${task.title}」`, t`金手指系统`);
     } else {
       log('system', t`任务 ${task.id}《${task.title}》判定失败，奖励作废。`);
       toastr.warning(t`任务「${task.title}」判定失败`, t`金手指系统`);

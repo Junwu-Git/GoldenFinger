@@ -30,7 +30,7 @@
 
       <div class="gf-view-title">{{ t`进行中的任务（${game.activeTasks.length}/${system.maxActiveTasks}）` }}</div>
       <template v-if="game.activeTasks.length > 0">
-        <GfTaskCard v-for="task in game.activeTasks" :key="task.id" :task="task" @settle="settle" />
+        <GfTaskCard v-for="task in game.activeTasks" :key="task.id" :task="task" @abandon="abandon" />
       </template>
       <div v-else class="gf-empty-small">{{ t`暂无任务，点下方按钮让系统发布一个。` }}</div>
 
@@ -76,7 +76,6 @@ import { computed } from 'vue';
 import GfTaskCard from '@/components/shared/GfTaskCard.vue';
 import SystemSelectView from '@/components/views/SystemSelectView.vue';
 import { useGameStore } from '@/store/game';
-import type { TaskStatus } from '@/type/game';
 
 const emit = defineEmits<{
   navigate: [tab: 'log'];
@@ -102,9 +101,15 @@ async function issue(): Promise<void> {
   }
 }
 
-function settle(taskId: string, status: TaskStatus): void {
-  if (game.setTaskStatus(taskId, status) && status === 'failed') {
-    toastr.info(t`任务已标记为失败。`, t`金手指系统`);
+async function abandon(taskId: string): Promise<void> {
+  const task = game.state.tasks.find(item => item.id === taskId);
+  const context = window.SillyTavern?.getContext?.();
+  const result = await context?.callGenericPopup?.(
+    t`确定放弃「${task?.title ?? taskId}」？奖励作废。`,
+    context.POPUP_TYPE.CONFIRM,
+  );
+  if (result === context?.POPUP_RESULT?.AFFIRMATIVE) {
+    game.setTaskStatus(taskId, 'failed', 'manual');
   }
 }
 </script>

@@ -154,5 +154,10 @@
   "绑定系统后商店才会开张。": "The shop opens once a system is bound.",
   "结束标签": "End tag",
   "起始标签": "Start tag",
-  "首页": "Home"
+  "首页": "Home",
+  "放弃": "Abandon",
+  "放弃后奖励作废": "Rewards are voided on abandon",
+  "确定放弃「${0}」？奖励作废。": "Abandon \"${0}\"? Rewards are voided.",
+  "已放弃任务「${0}」": "Abandoned task \"${0}\"",
+  "放弃了任务 ${0}《${1}》，奖励作废。": "Abandoned task ${0} \"${1}\"; rewards voided."
 }
