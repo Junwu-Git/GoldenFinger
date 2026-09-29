@@ -7,7 +7,10 @@ import { type GameState, ShopItem, type SystemDef } from '@/type/game';
 import type { Settings } from '@/type/settings';
 
 /** AI 返回的商品数组契约（id 由本地生成，不在提示词里要求） */
-const SHELF_SCHEMA = z.array(ShopItem.omit({ id: true })).min(1).max(8);
+const SHELF_SCHEMA = z
+  .array(ShopItem.omit({ id: true }))
+  .min(1)
+  .max(8);
 
 const SHELF_INSTRUCTIONS = `把一批商店商品输出为严格的 JSON 数组：不要输出任何解释性文字、前后缀或代码块标记。每个元素字段如下：
 {

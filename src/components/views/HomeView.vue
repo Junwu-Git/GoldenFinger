@@ -28,7 +28,9 @@
     <!-- 进行中任务 -->
     <div class="gf-view-title">
       <span>{{ t`进行中的任务（${game.activeTasks.length}/${system?.maxActiveTasks ?? 0}）` }}</span>
-      <button class="gf-link-btn" @click="emit('navigate', 'tasks')">{{ t`全部` }} <i class="fa-solid fa-angle-right"></i></button>
+      <button class="gf-link-btn" @click="emit('navigate', 'tasks')">
+        {{ t`全部` }} <i class="fa-solid fa-angle-right"></i>
+      </button>
     </div>
     <template v-if="game.activeTasks.length > 0">
       <GfTaskCard v-for="task in game.activeTasks.slice(0, 2)" :key="task.id" :task="task" @settle="settle" />
@@ -37,7 +39,11 @@
 
     <!-- 快捷操作 -->
     <div class="gf-home-actions">
-      <button class="gf-primary-btn" :disabled="game.generating || game.activeTasks.length >= (system?.maxActiveTasks ?? 0)" @click="issue">
+      <button
+        class="gf-primary-btn"
+        :disabled="game.generating || game.activeTasks.length >= (system?.maxActiveTasks ?? 0)"
+        @click="issue"
+      >
         <i :class="game.generating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bolt'"></i>
         {{ game.generating ? t`正在连接系统…` : t`发布新任务` }}
       </button>
@@ -49,10 +55,17 @@
     <!-- 系统动态 -->
     <div class="gf-view-title">
       <span>{{ t`系统动态` }}</span>
-      <button class="gf-link-btn" @click="emit('navigate', 'log')">{{ t`全部` }} <i class="fa-solid fa-angle-right"></i></button>
+      <button class="gf-link-btn" @click="emit('navigate', 'log')">
+        {{ t`全部` }} <i class="fa-solid fa-angle-right"></i>
+      </button>
     </div>
     <div v-if="game.state.log.length > 0" class="gf-recent-log">
-      <div v-for="(entry, index) in game.state.log.slice(0, 5)" :key="entry.time + '-' + index" class="gf-log" :class="entry.kind">
+      <div
+        v-for="(entry, index) in game.state.log.slice(0, 5)"
+        :key="entry.time + '-' + index"
+        class="gf-log"
+        :class="entry.kind"
+      >
         <span class="gf-log-time">{{ formatTime(entry.time) }}</span>
         <span>{{ entry.text }}</span>
       </div>

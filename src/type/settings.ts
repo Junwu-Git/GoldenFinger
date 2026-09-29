@@ -43,10 +43,7 @@ export const Settings = z
     api: ApiSettings.prefault({}),
     customSystems: z.array(SystemDef).default([]),
     /** 面板窗口位置（-1 表示未初始化，首开时停靠右上） */
-    panelPos: z
-      .object({ x: z.number(), y: z.number() })
-      .default({ x: -1, y: -1 })
-      .catch({ x: -1, y: -1 }),
+    panelPos: z.object({ x: z.number(), y: z.number() }).default({ x: -1, y: -1 }).catch({ x: -1, y: -1 }),
     panelVisible: z.boolean().default(false),
   })
   .prefault({});

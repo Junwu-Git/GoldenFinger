@@ -9,8 +9,14 @@
       </span>
     </div>
     <div class="gf-task-desc">{{ task.description }}</div>
-    <div class="gf-task-line"><span class="gf-task-tag">{{ t`要求` }}</span>{{ task.requirements }}</div>
-    <div class="gf-task-line"><span class="gf-task-tag">{{ t`奖励` }}</span>{{ rewardText(task) }}</div>
+    <div class="gf-task-line">
+      <span class="gf-task-tag">{{ t`要求` }}</span
+      >{{ task.requirements }}
+    </div>
+    <div class="gf-task-line">
+      <span class="gf-task-tag">{{ t`奖励` }}</span
+      >{{ rewardText(task) }}
+    </div>
     <div v-if="!closed" class="gf-task-actions">
       <button class="gf-mini-btn ok" @click="$emit('settle', task.id, 'completed')">
         <i class="fa-solid fa-check"></i> {{ t`完成` }}

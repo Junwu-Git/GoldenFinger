@@ -67,7 +67,10 @@ export const ParsedTask = z.object({
   title: z.string().default('神秘任务'),
   description: z.string().default(''),
   requirements: z.string().default(''),
-  rewards: z.array(Reward).min(1).prefault([{ name: '', amount: 10 }]),
+  rewards: z
+    .array(Reward)
+    .min(1)
+    .prefault([{ name: '', amount: 10 }]),
   expReward: z.number().default(50).catch(50),
   difficulty: z.number().default(2).catch(2),
 });

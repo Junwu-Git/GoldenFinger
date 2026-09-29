@@ -6,7 +6,15 @@ import { generateTaskViaApi } from '@/core/task-generator';
 import { generateShopShelf } from '@/core/shop-generator';
 import { useSettingsStore } from '@/store/settings';
 import { findSystem } from '@/systems/builtin';
-import { GameState, expToNext, type LogKind, type ParsedTask, type SystemDef, type Task, type TaskStatus } from '@/type/game';
+import {
+  GameState,
+  expToNext,
+  type LogKind,
+  type ParsedTask,
+  type SystemDef,
+  type Task,
+  type TaskStatus,
+} from '@/type/game';
 import { validateInplace } from '@/util/zod';
 
 /** 金手指游玩状态在聊天元数据中的字段名 */
@@ -60,7 +68,12 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     findSystem(state.value.activeSystemId, settingsStore.settings.customSystems),
   );
   const activeTasks = computed<Task[]>(() => state.value.tasks.filter(task => task.status === 'active'));
-  const closedTasks = computed<Task[]>(() => state.value.tasks.filter(task => task.status !== 'active').slice().reverse());
+  const closedTasks = computed<Task[]>(() =>
+    state.value.tasks
+      .filter(task => task.status !== 'active')
+      .slice()
+      .reverse(),
+  );
   const expNext = computed(() => expToNext(state.value.level));
   const levelTitle = computed(() => activeSystem.value?.levelNames[state.value.level - 1] ?? '');
 

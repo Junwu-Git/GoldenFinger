@@ -7,6 +7,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+# EndBug/add-and-commit 推送 [bot] Bundle 提交需要写权限（默认 GITHUB_TOKEN 只读，会 403）
+permissions:
+  contents: write
+
 jobs:
   bundle:
     runs-on: ubuntu-latest

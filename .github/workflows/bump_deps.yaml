@@ -5,6 +5,10 @@ on:
     - cron: '0 0 */3 * *'
   workflow_dispatch:
 
+# EndBug/add-and-commit 推送 [bot] Bump deps 提交需要写权限
+permissions:
+  contents: write
+
 jobs:
   bump_deps:
     runs-on: ubuntu-latest

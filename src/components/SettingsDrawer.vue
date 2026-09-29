@@ -24,7 +24,9 @@
 
         <div class="gf-section-title">{{ t`自定义系统（${settings.customSystems.length}）` }}</div>
         <div v-for="(system, index) in settings.customSystems" :key="system.id" class="gf-custom-item">
-          <span class="gf-custom-name" :style="{ '--gf-accent': system.color }">{{ system.icon }} {{ system.name }}</span>
+          <span class="gf-custom-name" :style="{ '--gf-accent': system.color }"
+            >{{ system.icon }} {{ system.name }}</span
+          >
           <span class="gf-flex"></span>
           <button class="menu_button menu_button_icon gf-trash" :title="t`删除`" @click="removeCustomSystem(index)">
             <i class="fa-solid fa-trash-can"></i>
@@ -37,7 +39,12 @@
         <div v-if="editorOpen" class="gf-editor">
           <div class="gf-setting-row">
             <span class="gf-setting-label">{{ t`名称` }}</span>
-            <input v-model="editor.name" class="text_input gf-flex-input" type="text" :placeholder="t`例如：赌徒系统`" />
+            <input
+              v-model="editor.name"
+              class="text_input gf-flex-input"
+              type="text"
+              :placeholder="t`例如：赌徒系统`"
+            />
           </div>
           <div class="gf-setting-row">
             <span class="gf-setting-label">{{ t`图标（emoji）` }}</span>
@@ -53,7 +60,12 @@
           </div>
           <div class="gf-setting-row">
             <span class="gf-setting-label">{{ t`商店名称` }}</span>
-            <input v-model="editor.shopName" class="text_input gf-flex-input" type="text" :placeholder="t`例如：黑市交易所`" />
+            <input
+              v-model="editor.shopName"
+              class="text_input gf-flex-input"
+              type="text"
+              :placeholder="t`例如：黑市交易所`"
+            />
           </div>
           <div class="gf-setting-row">
             <span class="gf-setting-label">{{ t`换一批价格` }}</span>
@@ -65,7 +77,12 @@
           </div>
           <div class="gf-setting-col">
             <span class="gf-setting-label">{{ t`等级称号（逗号分隔，可留空）` }}</span>
-            <input v-model="editor.levelNamesText" class="text_input gf-flex-input" type="text" :placeholder="t`例如：学徒,能手,宗师`" />
+            <input
+              v-model="editor.levelNamesText"
+              class="text_input gf-flex-input"
+              type="text"
+              :placeholder="t`例如：学徒,能手,宗师`"
+            />
           </div>
           <div class="gf-setting-col">
             <span class="gf-setting-label">{{ t`系统设定（会注入提示词；以第三人称描述系统的性格与播报风格）` }}</span>
@@ -76,7 +93,9 @@
             <textarea v-model="editor.taskHint" class="text_input gf-textarea" rows="3"></textarea>
           </div>
           <div class="gf-editor-actions">
-            <button class="menu_button" @click="saveCustomSystem"><i class="fa-solid fa-floppy-disk"></i>&nbsp;{{ t`保存` }}</button>
+            <button class="menu_button" @click="saveCustomSystem">
+              <i class="fa-solid fa-floppy-disk"></i>&nbsp;{{ t`保存` }}
+            </button>
             <button class="menu_button" @click="editorOpen = false">{{ t`取消` }}</button>
           </div>
         </div>
@@ -152,7 +171,8 @@ function saveCustomSystem(): void {
     .map(name => name.trim())
     .filter(Boolean);
   const candidate: SystemDef = {
-    id: editorIndex.value >= 0 ? settings.value.customSystems[editorIndex.value].id : `custom_${Date.now().toString(36)}`,
+    id:
+      editorIndex.value >= 0 ? settings.value.customSystems[editorIndex.value].id : `custom_${Date.now().toString(36)}`,
     name: editor.name.trim() || t`未命名系统`,
     icon: editor.icon.trim() || '✨',
     color: editor.color,

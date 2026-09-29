@@ -38,7 +38,12 @@
         </div>
         <div class="gf-setting-col">
           <span class="gf-setting-label">{{ t`API 地址` }}</span>
-          <input v-model="draft.url" class="text_input gf-flex-input" type="text" placeholder="https://api.example.com/v1" />
+          <input
+            v-model="draft.url"
+            class="text_input gf-flex-input"
+            type="text"
+            placeholder="https://api.example.com/v1"
+          />
         </div>
         <div class="gf-setting-col">
           <span class="gf-setting-label">{{ t`密钥（可选）` }}</span>
@@ -68,7 +73,9 @@
           <input v-model.number="draft.maxTokens" class="text_input gf-number" type="number" min="64" max="8192" />
         </div>
         <div class="gf-editor-actions">
-          <button class="menu_button" @click="saveApi"><i class="fa-solid fa-floppy-disk"></i>&nbsp;{{ t`保存` }}</button>
+          <button class="menu_button" @click="saveApi">
+            <i class="fa-solid fa-floppy-disk"></i>&nbsp;{{ t`保存` }}
+          </button>
           <button class="menu_button" @click="resetApi">{{ t`还原` }}</button>
         </div>
       </template>
@@ -192,7 +199,9 @@ const selectedPreset = computed({
   },
 });
 
-const modelOptions = computed<string[]>(() => (fetchedModels.value.length > 0 ? fetchedModels.value : presetModels.value));
+const modelOptions = computed<string[]>(() =>
+  fetchedModels.value.length > 0 ? fetchedModels.value : presetModels.value,
+);
 
 function saveApi(): void {
   Object.assign(settings.value.api, klona(draft));
@@ -215,7 +224,10 @@ async function fetchModels(): Promise<void> {
   }
   fetchingModels.value = true;
   try {
-    const models = await window.TavernHelper.getModelList({ apiurl: normalizeApiUrl(draft.url), key: draft.key || undefined });
+    const models = await window.TavernHelper.getModelList({
+      apiurl: normalizeApiUrl(draft.url),
+      key: draft.key || undefined,
+    });
     fetchedModels.value = models;
     if (!draft.model && models.length > 0) {
       draft.model = models[0];

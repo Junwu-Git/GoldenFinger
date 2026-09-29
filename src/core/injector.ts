@@ -1,4 +1,9 @@
-import { extension_prompt_roles, extension_prompt_types, setExtensionPrompt, substituteParams } from '@sillytavern/script';
+import {
+  extension_prompt_roles,
+  extension_prompt_types,
+  setExtensionPrompt,
+  substituteParams,
+} from '@sillytavern/script';
 import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
 import type { GameState, SystemDef, Task } from '@/type/game';
@@ -109,7 +114,10 @@ export function handleMessageMarkers(messageIndex: number): boolean {
   }
 
   if (settled && stripped) {
-    const cleaned = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    const cleaned = text
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     // 酒馆助手可用时走 setChatMessages：一步完成改写 + 楼层重渲染（补发渲染事件）+ 落盘
     // （其内部 saveChatConditional 已核实，见 JS-Slash-Runner src/function/chat_message.ts）；
     // 不可用时直接改 ST 楼层数据兜底（updateMessageBlock 只重渲染 DOM，saveChat 落盘）
