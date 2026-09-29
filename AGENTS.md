@@ -30,25 +30,29 @@ SillyTavern 第三方扩展，基于 `tavern_extension_template`（与 choice �
 - **货币判定**：奖励 `name === state.currencyName` 入 points，否则入背包（同名合并 count）。`normalizeTask` 已把「含货币名的奖励」归一，AI 稍微跑偏也能正确入账。
 - **升级曲线**：`expToNext(level) = 60 + level * 60`（120 起步）。升级在结算末尾 while 循环处理，允许一次跨多级。
 - **自动发布**：`noteAutoIssue()` 每 AI 回复（type 非 quiet）计数一次，达到 `autoIssueInterval` 且任务未满才返回 true；`issueTask` 成功后清零计数。
-- **商店**：货架由 `core/shop-generator.ts` 生成（JSON 数组 4~6 件，提示词内写死价格带：普通 10~50 / 稀有 50~200 / 传说 200~1000，按宿主等级微调），逐件 zod 校验，失败保留旧货架。`GameState.shop` 为 null 表示从未开店；**首次进店 `ensureShop` 免费开张，`refreshShop` 换一批扣 `system.refreshCost`**；`buyItem` 即时结算（扣款→背包合并→库存-1）。稀有度 rarity 1~3（普通灰/稀有蓝/传说金），色板单一来源 `--gf-rarity-N`(+soft)。
+- **提示词模块化**：注入文本 = `settings.promptModules` 中 enabled 模块依序拼装，`{{变量}}` 由 `injector.buildVars` 填充（{{user}} 交给酒馆 substituteParams）。默认模板单一来源 `type/settings.ts` 的 `DEFAULT_PROMPT_MODULES`（schema default 用 `structuredClone` 工厂防共享引用污染）；模块数组为空时运行时回落默认。改注入文案只需要动默认模板或让用户在设置页编辑，预览/注入共用同一构建函数。
+- **商店**：货架由 `core/shop-generator.ts` 生成（JSON 数组 4~6 件，提示词内写死价格带：普通 10~50 / 稀有 50~200 / 传说 200~1000，按宿主等级微调），逐件 zod 校验，失败保留旧货架。`GameState.shop` 为 null 表示从未开店；**首次进店 `ensureShop` 免费开张，`refreshShop` 换一批扣 `system.refreshCost`（失败退款）**；`buyItem` 即时结算（扣款→背包合并→库存-1）。稀有度 rarity 1~3（普通灰/稀有蓝/传说金），色板单一来源 `--gf-rarity-N`(+soft)。
 - **API 配置的单一入口在面板「设置」页**：klona draftForm 编辑、保存才写 store；服务商预设（`core/api-presets.ts`，选预设自动填地址+示例模型）；「拉取模型」走 `window.TavernHelper.getModelList` 兼作连通测试（酒馆助手缺失时降级为仅手动填模型）。扩展设置抽屉刻意不放 API 设置。
 
 ## UI 要点（现状，可改）
 
-- 面板是**六标签壳**（首页/任务/商店/背包/日志/设置）：`GamePanel.vue` 只管横幅（icon+系统名+Lv+货币）、标签栏、视图过渡与拖拽定位；内容全在 `components/views/*`，共享件 `components/shared/`（`GfSectionCard` 折叠卡、`GfTaskCard` 任务卡）。
-- 主视觉「每系统主题色 `--gf-accent` + 暗色玻璃」；全部颜色/圆角/间距收成 `--gf-*` token（背景三层/文字三层/稀有度双色板），换肤只动 token。生成中走 header 下缘 shimmer 光带；标签切换 fade-slide；货架 stagger 入场；<480px 标签只留图标、统计格降为两列。
+- **双层结构（同 choice 的主面板 + 设置弹窗模式）**：
+  - 主面板 `GamePanel.vue` = 单页直铺的状态总览（stat 格/经验条）+ 进行中任务卡（可手动结算）+ 发布按钮 + 已完结折叠区 + 最近动态，**没有标签页**；头部工具区（商店/背包/日志/系统/设置五个图标按钮）只负责打开二级窗口；未绑定时显示引导 CTA。
+  - 二级窗口 `shared/GfWindow.vue` = Teleport 遮罩弹窗（拖拽、会话级开关），五个通用页面：系统（选系统/解绑）/ 商店 / 背包 / 日志 / 设置。页面开关单一信号在 `core/window-state.ts`（`isWindowOpen`/`activePage`/`openPage`，同 choice 的 floating-state 单例 ref 模式）。未绑定系统时窗口强制停在「系统」页。
+  - `views/SystemSelectView.vue` 是独立的选系统界面（当前系统卡 + 全量系统网格，激活/解绑的 Popup 确认都收在这）。
+- 主视觉「每系统主题色 `--gf-accent` + 暗色玻璃」；全部颜色/圆角/间距收成 `--gf-*` token（背景三层/文字三层/稀有度双色板），换肤只动 token。生成中走 header 下缘 shimmer 光带；视图切换 fade-slide；货架 stagger 入场。
 - 空状态统一「大图标 + 风味文案 +（可选）行动按钮」；余额不足一律按钮置灰（不弹 toast），操作失败才 toast。
-- **提示词预览**在设置页：`buildInjectionText` 的只读镜像（改注入文案不用改预览）+ `getTokenCountAsync` token 数 + 复制按钮；注入逻辑本体在 `core/injector.ts`，两者共用同一构建函数。
-- 悬浮面板 v-show 保挂载 + useDraggable 拖拽、位置持久化；未激活时展示系统选择网格，有历史数据时激活新系统先弹酒馆 Popup 确认。
-- i18n：界面文本全部 `t\`\``，插值 key 形如 `发布任务 ${0}《${1}》`，en.json 按此映射（新增文案后跑一次 key 对齐检查）；注入给 AI 的提示词文本刻意不翻译（剧情语言）。
+- **提示词在设置页两段呈现**：`提示词模板`（模块卡：名称+启停+textarea，单模块恢复/全部恢复默认，变量清单在脚本里拼——模板里直写 `{{ }}` 会被 Vue 吃掉）+ `提示词预览`（compose 结果只读镜像 + `getTokenCountAsync` token 数 + 复制）。
+- 悬浮主面板 v-show 保挂载 + useDraggable 拖拽、位置持久化；有历史数据时激活新系统先弹酒馆 Popup 确认（防误清空）。
+- i18n：界面文本全部 `t\`\``，插值 key 形如 `发布任务 ${0}《${1}》`，en.json 按此映射（新增文案后跑 key 对齐检查：0 missing / 0 unused / 0 重复）；注入给 AI 的提示词文本刻意不翻译（剧情语言）。
 
 ## 目录
 
-- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、task-generator（任务生成+解析）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、injector（注入+判定标记）、wand-menu（魔棒入口，轮询注入）。
+- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、task-generator（任务生成+解析）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、injector（模块化注入+判定标记）、window-state（二级窗口单例信号）、wand-menu（魔棒入口，轮询注入）。
 - `src/store/`：settings（全局设置）、game（游玩状态+任务结算+商店 actions）。
-- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema，SCHEMA_VERSION=1）。
+- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema + DEFAULT_PROMPT_MODULES，SCHEMA_VERSION=1）。
 - `src/systems/builtin.ts`：5 个内置系统（含 shopName/refreshCost）；`findSystem(id, customSystems)` 是 id → 定义的唯一解析点。
-- `src/components/`：GamePanel（面板壳：横幅/标签/过渡）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Home/Tasks/Shop/Inventory/Log/Settings 六视图）、`shared/`（GfSectionCard、GfTaskCard）。
+- `src/components/`：GamePanel（主面板：状态+任务直铺）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Shop/Inventory/Log/Settings/SystemSelect）、`shared/`（GfWindow 二级窗口、GfSectionCard、GfTaskCard）。
 - `@types/`：酒馆助手类型包（全局 ambient 声明，无运行时产物）。
 
 ## 构建与验证
@@ -59,12 +63,12 @@ pnpm typecheck   # vue-tsc --noEmit
 pnpm lint
 ```
 
-无单测，靠 typecheck/build/lint + 浏览器验证。核心交互改动至少确认：绑定系统 → 发任务 → AI 回复带标记 → 自动结算/升级 → 进店自动开张 → 购买 → 设置页预览与 API 保存，这条主链路可通。
+无单测，靠 typecheck/build/lint + 浏览器验证。核心交互改动至少确认：绑定系统 → 发任务 → AI 回复带标记 → 自动结算/升级 → 进店自动开张 → 购买 → 设置页改模板看预览变化 → API 保存，这条主链路可通。
 
 ## 未实现 / 规划
 
 - 任务时限/失败惩罚的主动追踪（目前失败惩罚依赖任务 rewards 里的负数与 AI 演出）。
 - 签到系统的「每日一次」真实日历限制（当前签到任务由 AI 生成的剧情任务承载）。
 - 系统升级主动解锁新能力（当前等级只是称号与状态注入）；传说级商品的高级效果演出。
-- 可编辑注入模板（提示词预览当前只读，模板本体硬编码在 injector.buildInjectionText）。
+- 提示词模块拖拽排序与多套模板配置切换（当前模块固定顺序、单一模板）。
 - 世界书/角色卡联动（把系统状态同步写进世界书条目等）。

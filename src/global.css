@@ -35,6 +35,7 @@
 
   --gf-accent: #8b5cf6;
   --gf-z-panel: 30000;
+  --gf-z-window: 30100;
 
   --gf-font-mono: 'Cascadia Code', Consolas, monospace;
 }
@@ -981,13 +982,132 @@
 }
 
 /* ===== 窄屏适配：标签只留图标 ===== */
-@media (max-width: 480px) {
-  .gf-tab-label {
-    display: none;
-  }
+/* ===== 二级窗口（系统/商店/背包/日志/设置）===== */
+.gf-window-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--gf-z-window);
+  background: rgba(0, 0, 0, 0.45);
+}
 
-  .gf-tab {
-    padding: 9px 0 8px;
+.gf-window {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: min(660px, 96vw);
+  height: min(82vh, 680px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--gf-radius-lg);
+  overflow: hidden;
+  color: var(--gf-text-0);
+  font-size: 13px;
+  background: linear-gradient(168deg, var(--gf-bg-0), color-mix(in srgb, var(--gf-accent) 8%, var(--gf-bg-0)));
+  border: 1px solid color-mix(in srgb, var(--gf-accent) 40%, transparent);
+  box-shadow:
+    0 14px 44px rgba(0, 0, 0, 0.6),
+    0 0 18px color-mix(in srgb, var(--gf-accent) 16%, transparent);
+}
+
+.gf-window-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  cursor: move;
+  user-select: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--gf-accent) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gf-accent) 22%, transparent), transparent 70%);
+}
+
+.gf-window-title-icon {
+  color: var(--gf-accent);
+}
+
+.gf-window-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.gf-window-nav {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gf-border);
+  overflow-x: auto;
+}
+
+.gf-window-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--gf-border);
+  background: var(--gf-bg-1);
+  color: var(--gf-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.gf-window-tab:hover {
+  color: var(--gf-text-0);
+}
+
+.gf-window-tab.active {
+  color: #fff;
+  background: var(--gf-accent);
+  border-color: var(--gf-accent);
+}
+
+.gf-window-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--gf-space-3);
+}
+
+.gf-window-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.gf-window-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--gf-accent) 38%, transparent);
+  border-radius: 3px;
+}
+
+/* ===== 折叠区（已完结任务等）===== */
+.gf-details {
+  margin-top: var(--gf-space-3);
+  border-top: 1px dashed var(--gf-border);
+  padding-top: 6px;
+}
+
+.gf-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gf-text-1);
+  user-select: none;
+  padding: 3px 0;
+}
+
+.gf-details summary:hover {
+  color: var(--gf-text-0);
+}
+
+.gf-details .gf-task {
+  margin-top: 6px;
+}
+
+/* ===== 窄屏适配 ===== */
+@media (max-width: 560px) {
+  .gf-window {
+    width: 96vw;
+    height: 90vh;
   }
 
   .gf-stat-grid {

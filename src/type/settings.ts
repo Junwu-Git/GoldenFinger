@@ -21,6 +21,59 @@ export const ApiSettings = z.object({
 
 export type ApiSettings = z.infer<typeof ApiSettings>;
 
+/** 注入提示词的组成模块：enabled 的模块按序拼装，{{变量}} 在注入时填充（同 choice 的模块化提示词思路） */
+export const PromptModule = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(24),
+  enabled: z.boolean().default(true),
+  content: z.string(),
+});
+
+export type PromptModule = z.infer<typeof PromptModule>;
+
+/** 可用变量：{{user}}/{{persona}} 交由酒馆 substituteParams 与运行时分别填充，其余为系统状态 */
+export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
+  {
+    id: 'header',
+    name: '系统设定',
+    enabled: true,
+    content: [
+      '【系统设定 | 「{{systemName}}」已激活】',
+      '设定：{{user}}被神秘的「{{systemName}}」绑定，只有{{user}}能感知系统的存在。系统消息以「叮！」开头，以仅{{user}}可见的系统面板形式呈现，其他角色对此一无所知。',
+    ].join('\n'),
+  },
+  {
+    id: 'persona',
+    name: '系统人格',
+    enabled: true,
+    content: '{{persona}}',
+  },
+  {
+    id: 'status',
+    name: '当前状态',
+    enabled: true,
+    content: ['【当前系统状态】', '宿主：{{user}}｜{{level}}｜{{currency}}：{{points}}{{inventoryText}}'].join('\n'),
+  },
+  {
+    id: 'tasks',
+    name: '进行中任务',
+    enabled: true,
+    content: ['【进行中的任务】', '{{tasks}}'].join('\n'),
+  },
+  {
+    id: 'rules',
+    name: '判定规则',
+    enabled: true,
+    content: [
+      '【任务判定规则（务必遵守）】',
+      '- 当剧情明确显示{{user}}已完成某任务的要求、且事件已写入正文时，在回复的最末尾另起一行输出判定标记，如：[任务完成:T001]',
+      '- 当剧情明确判定某任务已无法完成时，在回复末尾输出：[任务失败:T001]',
+      '- 判定标记必须使用上述任务ID；除此之外，请在正文中自然展开剧情，可在任务达成或奖励发放处插入「叮！」开头的系统播报描写面板变化。',
+      '- 不要在正文中解释标记机制；不要自行发明系统任务、奖励或判定，一切以【进行中的任务】为准。',
+    ].join('\n'),
+  },
+];
+
 export type Settings = z.infer<typeof Settings>;
 export const Settings = z
   .object({
@@ -41,6 +94,8 @@ export const Settings = z
     /** 任务生成时单条消息的最大截取长度 */
     storyMessageLength: z.number().int().min(50).max(600).default(160).catch(160),
     api: ApiSettings.prefault({}),
+    /** 注入提示词模板（可编辑；default 用工厂防共享引用被就地污染） */
+    promptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_PROMPT_MODULES)),
     customSystems: z.array(SystemDef).default([]),
     /** 面板窗口位置（-1 表示未初始化，首开时停靠右上） */
     panelPos: z.object({ x: z.number(), y: z.number() }).default({ x: -1, y: -1 }).catch({ x: -1, y: -1 }),

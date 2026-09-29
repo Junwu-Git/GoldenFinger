@@ -1,5 +1,30 @@
 <template>
   <div class="gf-view">
+    <!-- 提示词模板（choice PromptEditor 式模块编辑） -->
+    <GfSectionCard :title="t`提示词模板`" icon="fa-solid fa-pen-to-square">
+      <template #extra>
+        <button class="gf-link-btn" :title="t`全部恢复默认模板`" @click="resetModules">
+          <i class="fa-solid fa-rotate-left"></i> {{ t`恢复默认` }}
+        </button>
+      </template>
+      <div class="gf-setting-desc">
+        {{ t`启用中的模块按顺序拼装后注入给正文 AI，双花括号变量会在注入时填充实际状态。` }}
+      </div>
+      <div v-for="(module, index) in settings.promptModules" :key="module.id" class="gf-pm-card" :class="{ off: !module.enabled }">
+        <div class="gf-pm-head">
+          <label class="checkbox_label gf-pm-toggle">
+            <input v-model="module.enabled" type="checkbox" />
+            <span>{{ module.name }}</span>
+          </label>
+          <button class="gf-link-btn" :title="t`恢复此模块的默认内容`" @click="resetModule(index)">
+            <i class="fa-solid fa-rotate-left"></i>
+          </button>
+        </div>
+        <textarea v-model="module.content" class="text_input gf-pm-textarea" rows="4"></textarea>
+      </div>
+      <div class="gf-var-hint">{{ varHint }}</div>
+    </GfSectionCard>
+
     <!-- 提示词预览 -->
     <GfSectionCard :title="t`提示词预览`" icon="fa-solid fa-eye">
       <template #extra>
@@ -131,6 +156,7 @@ import { normalizeApiUrl } from '@/core/api-client';
 import { API_PRESETS, presetForApiUrl } from '@/core/api-presets';
 import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
+import { DEFAULT_PROMPT_MODULES } from '@/type/settings';
 
 const game = useGameStore();
 const settingsStore = useSettingsStore();
@@ -139,6 +165,32 @@ const { settings } = storeToRefs(settingsStore);
 const injectOpen = ref(false);
 const autoOpen = ref(false);
 
+// #region 提示词模板
+
+// 变量清单放 script 里拼：模板里直接写 {{ }} 会被 Vue 当插值
+const varHint = computed(
+  () =>
+    `${t`可用变量`}: {{user}} {{systemName}} {{persona}} {{level}} {{currency}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}}`,
+);
+
+function resetModule(index: number): void {
+  const current = settings.value.promptModules[index];
+  const fallback = DEFAULT_PROMPT_MODULES.find(candidate => candidate.id === current?.id);
+  if (!current || !fallback) {
+    return;
+  }
+  current.content = fallback.content;
+  current.enabled = fallback.enabled;
+  current.name = fallback.name;
+}
+
+function resetModules(): void {
+  settings.value.promptModules = structuredClone(DEFAULT_PROMPT_MODULES);
+  toastr.success(t`已恢复默认模板`, t`金手指系统`);
+}
+
+// #endregion
+
 // #region 提示词预览
 
 const previewText = computed(() => {
@@ -146,7 +198,7 @@ const previewText = computed(() => {
   if (!system || !settings.value.enabled) {
     return '';
   }
-  return buildInjectionText(system, game.state);
+  return buildInjectionText(system, game.state, settings.value);
 });
 
 const tokenCount = ref<number | null>(null);
@@ -264,5 +316,45 @@ async function fetchModels(): Promise<void> {
   border: 1px solid var(--gf-border);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+.gf-pm-card {
+  margin-bottom: 8px;
+  border: 1px solid var(--gf-border);
+  border-radius: var(--gf-radius-sm);
+  background: var(--gf-bg-1);
+  padding: 7px 9px;
+}
+
+.gf-pm-card.off {
+  opacity: 0.55;
+}
+
+.gf-pm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.gf-pm-toggle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.gf-pm-textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gf-var-hint {
+  font-family: var(--gf-font-mono);
+  font-size: 10.5px;
+  color: var(--gf-text-2);
+  line-height: 1.6;
+  word-break: break-all;
 }
 </style>

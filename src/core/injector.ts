@@ -7,6 +7,7 @@ import {
 import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
 import type { GameState, SystemDef, Task } from '@/type/game';
+import { DEFAULT_PROMPT_MODULES, type Settings } from '@/type/settings';
 
 export const INJECTION_KEY = 'golden_finger';
 
@@ -21,7 +22,7 @@ export function refreshInjection(): void {
 
   let text = '';
   if (settings.enabled && system) {
-    text = buildInjectionText(system, game.state);
+    text = buildInjectionText(system, game.state, settings);
   }
 
   const position =
@@ -29,41 +30,45 @@ export function refreshInjection(): void {
   setExtensionPrompt(INJECTION_KEY, text, position, settings.injectionDepth, false, extension_prompt_roles.SYSTEM);
 }
 
-export function buildInjectionText(system: SystemDef, state: GameState): string {
-  const activeTasks = state.tasks.filter(task => task.status === 'active');
-  const inventoryText = state.inventory.length
-    ? `｜物品：${state.inventory.map(item => `${item.name}×${item.count}`).join('、')}`
-    : '';
+/** 按 settings.promptModules 拼装注入文本：enabled 模块依序填充变量后拼接 */
+export function buildInjectionText(system: SystemDef, state: GameState, settings: Settings): string {
+  const vars = buildVars(system, state);
+  const modules = settings.promptModules.length > 0 ? settings.promptModules : structuredClone(DEFAULT_PROMPT_MODULES);
+  const text = modules
+    .filter(module => module.enabled && module.content.trim())
+    .map(module => fillVars(module.content, vars))
+    .join('\n\n');
+  return substituteParams(text);
+}
 
-  const lines: string[] = [
-    `【系统设定 | 「${system.name}」已激活】`,
-    `设定：{{user}}被神秘的「${system.name}」绑定，只有{{user}}能感知系统的存在。系统消息以「叮！」开头，以仅{{user}}可见的系统面板形式呈现，其他角色对此一无所知。`,
-  ];
-  if (system.persona) {
-    lines.push(system.persona);
-  }
-  lines.push(
-    '【当前系统状态】',
-    `宿主：{{user}}｜${levelText(system, state)}｜${system.currencyName}：${state.points}${inventoryText}`,
-    '【进行中的任务】',
-  );
-  if (activeTasks.length > 0) {
-    for (const task of activeTasks) {
-      lines.push(
-        `• ${task.id}《${task.title}》难度${'★'.repeat(task.difficulty)}｜要求：${task.requirements}｜奖励：${rewardText(task)}`,
-      );
-    }
-  } else {
-    lines.push('（暂无任务，等待系统发布）');
-  }
-  lines.push(
-    '【任务判定规则（务必遵守）】',
-    '- 当剧情明确显示{{user}}已完成某任务的要求、且事件已写入正文时，在回复的最末尾另起一行输出判定标记，如：[任务完成:T001]',
-    '- 当剧情明确判定某任务已无法完成时，在回复末尾输出：[任务失败:T001]',
-    '- 判定标记必须使用上述任务ID；除此之外，请在正文中自然展开剧情，可在任务达成或奖励发放处插入「叮！」开头的系统播报描写面板变化。',
-    '- 不要在正文中解释标记机制；不要自行发明系统任务、奖励或判定，一切以【进行中的任务】为准。',
-  );
-  return substituteParams(lines.join('\n'));
+/** 模块可用的运行时变量（{{user}} 不在此列，交给酒馆 substituteParams） */
+function buildVars(system: SystemDef, state: GameState): Record<string, string> {
+  const activeTasks = state.tasks.filter(task => task.status === 'active');
+  const tasksText =
+    activeTasks.length > 0
+      ? activeTasks
+          .map(
+            task =>
+              `• ${task.id}《${task.title}》难度${'★'.repeat(task.difficulty)}｜要求：${task.requirements}｜奖励：${rewardText(task)}`,
+          )
+          .join('\n')
+      : '（暂无任务，等待系统发布）';
+  return {
+    systemName: system.name,
+    persona: system.persona,
+    level: levelText(system, state),
+    currency: system.currencyName,
+    points: String(state.points),
+    inventoryText: state.inventory.length
+      ? `｜物品：${state.inventory.map(item => `${item.name}×${item.count}`).join('、')}`
+      : '',
+    tasks: tasksText,
+    maxTasks: String(system.maxActiveTasks),
+  };
+}
+
+function fillVars(content: string, vars: Record<string, string>): string {
+  return content.replace(/\{\{(\w+)\}\}/g, (match, key: string) => vars[key] ?? match);
 }
 
 function levelText(system: SystemDef, state: GameState): string {
