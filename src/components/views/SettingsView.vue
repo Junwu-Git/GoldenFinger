@@ -111,6 +111,53 @@
       </template>
     </GfSectionCard>
 
+    <!-- 楼层过滤正则 -->
+    <GfSectionCard v-model:open="filterOpen" :title="t`楼层过滤正则`" icon="fa-solid fa-filter">
+      <div class="gf-setting-desc">
+        {{ t`生成任务/商品前对参考楼层执行：tag 剥成对标签、regex 正则替换、extract 只保留指定标签内容（仅 AI 楼层）。` }}
+      </div>
+      <div v-for="(rule, index) in settings.storyFilterRules" :key="index" class="gf-rule-card">
+        <div class="gf-rule-head">
+          <select class="gf-rule-type" :value="rule.type" @change="changeFilterRuleType(index, $event)">
+            <option value="tag">tag</option>
+            <option value="regex">regex</option>
+            <option value="extract">extract</option>
+          </select>
+          <span class="gf-flex"></span>
+          <button class="gf-link-btn" :title="t`删除`" @click="settings.storyFilterRules.splice(index, 1)">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+        <template v-if="rule.type === 'tag'">
+          <div class="gf-setting-row">
+            <span class="gf-setting-label">{{ t`起始标签` }}</span>
+            <input v-model="rule.start" class="text_input gf-flex-input" type="text" placeholder="&lt;think&gt;" />
+          </div>
+          <div class="gf-setting-row">
+            <span class="gf-setting-label">{{ t`结束标签` }}</span>
+            <input v-model="rule.end" class="text_input gf-flex-input" type="text" placeholder="&lt;/think&gt;" />
+          </div>
+        </template>
+        <template v-else-if="rule.type === 'regex'">
+          <div class="gf-setting-col">
+            <span class="gf-setting-label">{{ t`正则（自动挂 gs 标志）` }}</span>
+            <input v-model="rule.pattern" class="text_input gf-flex-input" type="text" placeholder="&lt;Status&gt;[\s\S]*?&lt;/Status&gt;" />
+          </div>
+          <div class="gf-setting-col">
+            <span class="gf-setting-label">{{ t`替换为（留空 = 删除）` }}</span>
+            <input v-model="rule.replace" class="text_input gf-flex-input" type="text" />
+          </div>
+        </template>
+        <template v-else>
+          <div class="gf-setting-row">
+            <span class="gf-setting-label">{{ t`标签名` }}</span>
+            <input v-model="rule.tagName" class="text_input gf-flex-input" type="text" placeholder="thinking" />
+          </div>
+        </template>
+      </div>
+      <button class="menu_button" @click="addFilterRule"><i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加规则` }}</button>
+    </GfSectionCard>
+
     <!-- 提示词注入 -->
     <GfSectionCard v-model:open="injectOpen" :title="t`提示词注入`" icon="fa-solid fa-syringe">
       <label class="checkbox_label">
@@ -128,6 +175,15 @@
         <span class="gf-setting-label">{{ t`注入深度（对话内生效）` }}</span>
         <input v-model.number="settings.injectionDepth" class="text_input gf-number" type="number" min="0" max="20" />
       </div>
+      <div class="gf-setting-desc">{{ t`生成上下文（影响任务与商品和世界观的贴合度）` }}</div>
+      <label class="checkbox_label">
+        <input v-model="settings.useCharCard" type="checkbox" />
+        <span>{{ t`生成时包含角色卡（描述/性格/场景）` }}</span>
+      </label>
+      <label class="checkbox_label">
+        <input v-model="settings.useWorldInfo" type="checkbox" />
+        <span>{{ t`生成时包含已激活的世界书条目` }}</span>
+      </label>
     </GfSectionCard>
 
     <!-- 自动发布 -->
@@ -169,6 +225,7 @@ const { settings } = storeToRefs(settingsStore);
 
 const injectOpen = ref(false);
 const autoOpen = ref(false);
+const filterOpen = ref(false);
 
 // #region 提示词模板
 
@@ -192,6 +249,26 @@ function resetModule(index: number): void {
 function resetModules(): void {
   settings.value.promptModules = structuredClone(DEFAULT_PROMPT_MODULES);
   toastr.success(t`已恢复默认模板`, t`金手指系统`);
+}
+
+// #endregion
+
+// #region 楼层过滤正则
+// 类型切换必须整体替换规则对象：discriminatedUnion 缺字段会让存档 zod 解析失败
+
+function addFilterRule(): void {
+  settings.value.storyFilterRules.push({ type: 'regex', pattern: '', replace: '' });
+}
+
+function changeFilterRuleType(index: number, event: Event): void {
+  const type = (event.target as HTMLSelectElement).value;
+  const rules = settings.value.storyFilterRules;
+  rules[index] =
+    type === 'tag'
+      ? { type: 'tag', start: '', end: '' }
+      : type === 'extract'
+        ? { type: 'extract', tagName: '' }
+        : { type: 'regex', pattern: '', replace: '' };
 }
 
 // #endregion
@@ -361,5 +438,24 @@ async function fetchModels(): Promise<void> {
   color: var(--gf-text-2);
   line-height: 1.6;
   word-break: break-all;
+}
+
+.gf-rule-card {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--gf-border);
+  border-radius: var(--gf-radius-sm);
+  background: var(--gf-bg-1);
+}
+
+.gf-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.gf-rule-type {
+  width: 100px;
 }
 </style>

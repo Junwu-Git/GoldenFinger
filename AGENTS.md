@@ -32,14 +32,12 @@ SillyTavern 第三方扩展，基于 `tavern_extension_template`（与 choice �
 - **自动发布**：`noteAutoIssue()` 每 AI 回复（type 非 quiet）计数一次，达到 `autoIssueInterval` 且任务未满才返回 true；`issueTask` 成功后清零计数。
 - **提示词模块化**：注入文本 = `settings.promptModules` 中 enabled 模块依序拼装，`{{变量}}` 由 `injector.buildVars` 填充（{{user}} 交给酒馆 substituteParams）。默认模板单一来源 `type/settings.ts` 的 `DEFAULT_PROMPT_MODULES`（schema default 用 `structuredClone` 工厂防共享引用污染）；模块数组为空时运行时回落默认。改注入文案只需要动默认模板或让用户在设置页编辑，预览/注入共用同一构建函数。
 - **商店**：货架由 `core/shop-generator.ts` 生成（JSON 数组 4~6 件，提示词内写死价格带：普通 10~50 / 稀有 50~200 / 传说 200~1000，按宿主等级微调），逐件 zod 校验，失败保留旧货架。`GameState.shop` 为 null 表示从未开店；**首次进店 `ensureShop` 免费开张，`refreshShop` 换一批扣 `system.refreshCost`（失败退款）**；`buyItem` 即时结算（扣款→背包合并→库存-1）。稀有度 rarity 1~3（普通灰/稀有蓝/传说金），色板单一来源 `--gf-rarity-N`(+soft)。
-- **API 配置的单一入口在面板「设置」页**：klona draftForm 编辑、保存才写 store；服务商预设（`core/api-presets.ts`，选预设自动填地址+示例模型）；「拉取模型」走 `window.TavernHelper.getModelList` 兼作连通测试（酒馆助手缺失时降级为仅手动填模型）。扩展设置抽屉刻意不放 API 设置。
+- **生成上下文（角色卡/世界书/过滤）**：`core/context-builder.ts` 组装「世界观背景」块进任务/商品生成提示词。世界书**直接调酒馆原生 `getWorldInfoPrompt`**（倒序楼层 + 128000 预算 + trigger:'normal'，关键字/概率/深度全由酒馆管线处理，同 choice 的 buildWI；不自己造激活判定），before/after + depth≤2 条目聚合，总量截断防爆炸；角色卡读 context.characters 的描述/性格/场景（群聊跳过）。楼层过滤 `storyFilterRules`（tag/regex/extract 三型 discriminatedUnion）在 `buildStoryContext` 逐层执行，顺序 extract→tag→regex、清空丢层、非法正则跳过；**类型切换必须整体替换规则对象**（缺字段会让存档 zod 解析崩）。
 
 ## UI 要点（现状，可改）
 
-- **双层结构（同 choice 的主面板 + 设置弹窗模式）**：
-  - 主面板 `GamePanel.vue` = 单页直铺的状态总览（stat 格/经验条）+ 进行中任务卡（可手动结算）+ 发布按钮 + 已完结折叠区 + 最近动态，**没有标签页**；头部工具区（商店/背包/日志/系统/设置五个图标按钮）只负责打开二级窗口；未绑定时显示引导 CTA。
-  - 二级窗口 `shared/GfWindow.vue` = Teleport 遮罩弹窗（拖拽、会话级开关），五个通用页面：系统（选系统/解绑）/ 商店 / 背包 / 日志 / 设置。页面开关单一信号在 `core/window-state.ts`（`isWindowOpen`/`activePage`/`openPage`，同 choice 的 floating-state 单例 ref 模式）。未绑定系统时窗口强制停在「系统」页。
-  - `views/SystemSelectView.vue` 是独立的选系统界面（当前系统卡 + 全量系统网格，激活/解绑的 Popup 确认都收在这）。
+- **UI 布局是五标签主面板且常显**：首页/商店/背包/日志/设置五个 tab 无论是否绑定系统都在（未绑定不隐藏 UI，这是用户明确要的）；首页顶部是系统块（绑定=当前系统卡+「更换系统」展开网格，未绑定=直接铺选择网格）；商店未绑定时显示引导而非空白。拖拽是**手写 pointer 实现**（header 为把手、按钮除外、touch-action:none、位置在 pointerup 时才落盘）——曾用 @vueuse useDraggable 出过「完全拖不动」，回退手写前先想清楚。
+  - 页面组件在 `views/`：Home（系统块+状态+任务直铺）/ Shop / Inventory / Log / Settings / SystemSelect（选系统，被 Home 复用）；`core/window-state.ts` 与 GfWindow 已随双层结构方案废弃删除。
 - 主视觉「每系统主题色 `--gf-accent` + 暗色玻璃」；全部颜色/圆角/间距收成 `--gf-*` token（背景三层/文字三层/稀有度双色板），换肤只动 token。生成中走 header 下缘 shimmer 光带；视图切换 fade-slide；货架 stagger 入场。
 - 空状态统一「大图标 + 风味文案 +（可选）行动按钮」；余额不足一律按钮置灰（不弹 toast），操作失败才 toast。
 - **提示词在设置页两段呈现**：`提示词模板`（模块卡：名称+启停+textarea，单模块恢复/全部恢复默认，变量清单在脚本里拼——模板里直写 `{{ }}` 会被 Vue 吃掉）+ `提示词预览`（compose 结果只读镜像 + `getTokenCountAsync` token 数 + 复制）。
@@ -48,11 +46,11 @@ SillyTavern 第三方扩展，基于 `tavern_extension_template`（与 choice �
 
 ## 目录
 
-- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、task-generator（任务生成+解析）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、injector（模块化注入+判定标记）、window-state（二级窗口单例信号）、wand-menu（魔棒入口，轮询注入）。
+- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、context-builder（角色卡+世界书上下文，getWorldInfoPrompt 直调）、task-generator（任务生成+解析+楼层过滤）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、injector（模块化注入+判定标记）、wand-menu（魔棒入口，轮询注入）。
 - `src/store/`：settings（全局设置）、game（游玩状态+任务结算+商店 actions）。
-- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema + DEFAULT_PROMPT_MODULES，SCHEMA_VERSION=1）。
+- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema + DEFAULT_PROMPT_MODULES + StoryFilterRule，SCHEMA_VERSION=1）。
 - `src/systems/builtin.ts`：5 个内置系统（含 shopName/refreshCost）；`findSystem(id, customSystems)` 是 id → 定义的唯一解析点。
-- `src/components/`：GamePanel（主面板：状态+任务直铺）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Shop/Inventory/Log/Settings/SystemSelect）、`shared/`（GfWindow 二级窗口、GfSectionCard、GfTaskCard）。
+- `src/components/`：GamePanel（五标签壳+手写拖拽）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Home/Shop/Inventory/Log/Settings/SystemSelect）、`shared/`（GfSectionCard、GfTaskCard）。
 - `@types/`：酒馆助手类型包（全局 ambient 声明，无运行时产物）。
 
 ## 构建与验证
@@ -63,7 +61,7 @@ pnpm typecheck   # vue-tsc --noEmit
 pnpm lint
 ```
 
-无单测，靠 typecheck/build/lint + 浏览器验证。核心交互改动至少确认：绑定系统 → 发任务 → AI 回复带标记 → 自动结算/升级 → 进店自动开张 → 购买 → 设置页改模板看预览变化 → API 保存，这条主链路可通。
+无单测，靠 typecheck/build/lint + 浏览器验证。核心交互改动至少确认：绑定系统 → 发任务 → AI 回复带标记 → 自动结算/升级 → 进店自动开张 → 购买 → 面板可拖拽 → 设置页改模板/过滤规则看预览与生成变化 → API 保存，这条主链路可通。
 
 ## 未实现 / 规划
 

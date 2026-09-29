@@ -1,8 +1,9 @@
 import { substituteParams } from '@sillytavern/script';
 import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
+import { buildWorldContext } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
 import { type GameState, ParsedTask, type SystemDef } from '@/type/game';
-import type { Settings } from '@/type/settings';
+import type { Settings, StoryFilterRule } from '@/type/settings';
 
 /** 要求 AI 严格输出任务 JSON 的说明（主路径），解析失败时另有括号启发式兜底在 parse 层 */
 const TASK_JSON_INSTRUCTIONS = `把新任务输出为一个严格的 JSON 对象：不要输出任何解释性文字、前后缀或代码块标记。字段如下：
@@ -26,7 +27,8 @@ export async function generateTaskViaApi(
   gameState: GameState,
   settings: Settings,
 ): Promise<ParsedTask> {
-  const story = buildStoryContext(settings.storyMessages, settings.storyMessageLength);
+  const story = buildStoryContext(settings.storyMessages, settings.storyMessageLength, settings.storyFilterRules);
+  const worldContext = await buildWorldContext(settings);
   const activeTasks = gameState.tasks.filter(task => task.status === 'active');
 
   const stateLines = [
@@ -59,10 +61,11 @@ export async function generateTaskViaApi(
         '【当前系统状态】',
         ...stateLines,
         '',
+        ...(worldContext ? ['【世界观背景】', worldContext, ''] : []),
         '【最近剧情】',
         story || '（暂无剧情：请发布一个引导宿主迈出第一步的初始任务。）',
         '',
-        '请根据最近剧情的走向，发布一个与当前情境有机衔接、能推动剧情的新任务。只输出 JSON 对象本身。',
+        '请根据世界观与最近剧情的走向，发布一个与当前情境有机衔接、能推动剧情的新任务。只输出 JSON 对象本身。',
       ].join('\n'),
     ),
   };
@@ -75,19 +78,75 @@ export async function generateTaskViaApi(
   return parseTaskJson(raw, system);
 }
 
-/** 取最近 N 条消息拼成「名字：内容」的剧情摘要，单条截断防 token 爆炸 */
-export function buildStoryContext(count: number, maxLength: number): string {
+/** 取最近 N 条消息拼成「名字：内容」的剧情摘要，单条截断防 token 爆炸；过滤规则同 choice 的楼层清洗 */
+export function buildStoryContext(count: number, maxLength: number, filterRules: StoryFilterRule[] = []): string {
   // chat 元素是 ST 原生楼层结构，显式断言（见 types/ambient.d.ts）
   const chat = (window.SillyTavern?.getContext?.()?.chat ?? []) as StChatMessage[];
-  return chat
-    .slice(-count)
-    .filter(message => typeof message.mes === 'string' && message.mes.trim())
-    .map(message => {
-      const context = window.SillyTavern?.getContext?.();
-      const name = message.is_user ? context?.name1 : message.name || context?.name2 || '???';
-      return `${name}：${message.mes!.slice(0, maxLength).trim()}`;
-    })
-    .join('\n');
+  const lines: string[] = [];
+  for (const message of chat.slice(-count)) {
+    if (typeof message.mes !== 'string' || !message.mes.trim()) {
+      continue;
+    }
+    const context = window.SillyTavern?.getContext?.();
+    const name = message.is_user ? context?.name1 : message.name || context?.name2 || '???';
+    const text = applyStoryFilters(message.mes, Boolean(message.is_user), filterRules);
+    if (text) {
+      lines.push(`${name}：${text.slice(0, maxLength).trim()}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 对单条楼层跑过滤规则（执行顺序同 choice 的 buildChatHistory）：
+ * extract（仅 AI 楼层，无命中丢弃整条）→ tag 剥对 → regex 替换；清空后整条丢弃。
+ */
+function applyStoryFilters(text: string, isUser: boolean, rules: StoryFilterRule[]): string | null {
+  let out = text;
+
+  const extracts = rules.filter(rule => rule.type === 'extract');
+  if (!isUser && extracts.length > 0) {
+    let extracted = '';
+    for (const rule of extracts) {
+      const tag = rule.tagName.trim();
+      if (!tag) {
+        continue;
+      }
+      const pattern = new RegExp(`<${escapeRegExp(tag)}>[\\s\\S]*?</${escapeRegExp(tag)}>`, 'gi');
+      for (const match of out.matchAll(pattern)) {
+        extracted += `${match[0]}\n`;
+      }
+    }
+    out = extracted.trim();
+    if (!out) {
+      return null;
+    }
+  }
+
+  for (const rule of rules) {
+    if (rule.type === 'tag') {
+      if (rule.start.trim() && rule.end.trim()) {
+        out = out.replace(new RegExp(`${escapeRegExp(rule.start)}[\\s\\S]*?${escapeRegExp(rule.end)}`, 'g'), '');
+      }
+    } else if (rule.type === 'regex') {
+      if (!rule.pattern.trim()) {
+        continue;
+      }
+      try {
+        // 与 choice 一致：用户正则统一挂 gs 标志（跨行 + 贪婪语义可预期）
+        out = out.replace(new RegExp(rule.pattern, 'gs'), rule.replace ?? '');
+      } catch {
+        // 非法正则跳过该条，不中断整体生成
+      }
+    }
+  }
+
+  out = out.trim();
+  return out || null;
 }
 
 /** 解析 AI 返回的任务：JSON 主路径（围栏/裸对象多候选）+ 字段归一化 */

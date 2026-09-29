@@ -1,6 +1,7 @@
 import { substituteParams } from '@sillytavern/script';
 import { z } from 'zod';
 import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
+import { buildWorldContext } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
 import { buildStoryContext } from '@/core/task-generator';
 import { type GameState, ShopItem, type SystemDef } from '@/type/game';
@@ -34,6 +35,7 @@ export async function generateShopShelf(
   const inventoryText = gameState.inventory.length
     ? gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')
     : '空';
+  const worldContext = await buildWorldContext(settings);
 
   const systemMsg: ChatMsg = {
     role: 'system',
@@ -56,10 +58,11 @@ export async function generateShopShelf(
         `持有货币：${gameState.currencyName} ×${gameState.points}`,
         `持有物品：${inventoryText}`,
         '',
+        ...(worldContext ? ['【世界观背景】', worldContext, ''] : []),
         '【最近剧情】',
-        buildStoryContext(5, 120) || '（暂无剧情：请上一批稳妥实用的开张货。）',
+        buildStoryContext(5, 120, settings.storyFilterRules) || '（暂无剧情：请上一批稳妥实用的开张货。）',
         '',
-        `请根据当前状态与剧情氛围上一批新货。只输出 JSON 数组本身。`,
+        `请根据世界观与当前状态上一批新货。只输出 JSON 数组本身。`,
       ].join('\n'),
     ),
   };

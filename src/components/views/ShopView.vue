@@ -9,8 +9,17 @@
       <span class="gf-shop-balance">💰 {{ game.state.points }} {{ game.state.currencyName }}</span>
     </div>
 
+    <!-- 未绑定：提示先去首页绑定 -->
+    <div v-if="!system" class="gf-empty">
+      <i class="fa-solid fa-store gf-empty-icon"></i>
+      {{ t`绑定系统后商店才会开张。` }}
+      <button class="gf-secondary-btn" @click="emit('navigate', 'home')">
+        <i class="fa-solid fa-microchip"></i> {{ t`去选系统` }}
+      </button>
+    </div>
+
     <!-- 生成中 -->
-    <div v-if="game.shopGenerating" class="gf-shop-loading">
+    <div v-else-if="game.shopGenerating" class="gf-shop-loading">
       <i class="fa-solid fa-spinner fa-spin gf-empty-icon"></i>
       <div>{{ t`老板正在进货…` }}</div>
     </div>
@@ -51,6 +60,7 @@
 
     <!-- 换一批 -->
     <button
+      v-if="system"
       class="gf-secondary-btn gf-refresh-btn"
       :disabled="game.shopGenerating || game.state.points < refreshCost"
       :title="t`换一批需要 ${refreshCost} ${game.state.currencyName}`"
@@ -68,13 +78,20 @@ import { computed, onMounted } from 'vue';
 import { useGameStore } from '@/store/game';
 import { RARITY_NAMES } from '@/type/game';
 
+const emit = defineEmits<{
+  navigate: [tab: 'home'];
+}>();
+
 const game = useGameStore();
 const system = computed(() => game.activeSystem);
 const shopItems = computed(() => game.state.shop?.items ?? []);
 const refreshCost = computed(() => system.value?.refreshCost ?? 0);
 
-// 进店即免费开张：无货架时自动生成一次
+// 绑定状态下进店：无货架时免费开张
 onMounted(() => {
+  if (!game.activeSystem) {
+    return;
+  }
   void game.ensureShop().catch(error => {
     console.error('[GoldenFinger] 货架生成失败', error);
     toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);

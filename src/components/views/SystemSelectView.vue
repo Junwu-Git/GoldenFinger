@@ -11,34 +11,40 @@
         </div>
         <div v-if="system.tagline" class="gf-current-tagline">{{ system.tagline }}</div>
       </div>
+      <button class="gf-mini-btn" @click="showGrid = !showGrid">
+        <i :class="showGrid ? 'fa-solid fa-chevron-up' : 'fa-solid fa-shuffle'"></i> {{ t`更换系统` }}
+      </button>
       <button class="gf-mini-btn bad" @click="deactivate">{{ t`解绑` }}</button>
     </div>
     <div v-else class="gf-empty-small">{{ t`本聊天还没有绑定系统，选一个开始吧：` }}</div>
 
-    <div class="gf-view-title">{{ t`可选系统（${allSystems.length}）` }}</div>
-    <div class="gf-system-grid">
-      <button
-        v-for="candidate in allSystems"
-        :key="candidate.id"
-        class="gf-system-card"
-        :class="{ current: candidate.id === system?.id }"
-        :style="{ '--gf-accent': candidate.color }"
-        @click="activate(candidate)"
-      >
-        <div class="gf-system-icon">{{ candidate.icon }}</div>
-        <div class="gf-system-name">{{ candidate.name }}</div>
-        <div class="gf-system-tagline">{{ candidate.tagline }}</div>
-        <div class="gf-system-meta">{{ candidate.currencyName }} · {{ candidate.shopName }}</div>
-      </button>
+    <!-- 选择网格：未绑定常显；绑定后点「更换系统」展开 -->
+    <div v-show="showGrid">
+      <div class="gf-view-title">{{ t`可选系统（${allSystems.length}）` }}</div>
+      <div class="gf-system-grid">
+        <button
+          v-for="candidate in allSystems"
+          :key="candidate.id"
+          class="gf-system-card"
+          :class="{ current: candidate.id === system?.id }"
+          :style="{ '--gf-accent': candidate.color }"
+          @click="activate(candidate)"
+        >
+          <div class="gf-system-icon">{{ candidate.icon }}</div>
+          <div class="gf-system-name">{{ candidate.name }}</div>
+          <div class="gf-system-tagline">{{ candidate.tagline }}</div>
+          <div class="gf-system-meta">{{ candidate.currencyName }} · {{ candidate.shopName }}</div>
+        </button>
+      </div>
+      <div class="gf-hint">{{ t`自定义系统在扩展设置里创建与编辑；重新绑定会重置本聊天数据。` }}</div>
     </div>
-    <div class="gf-hint">{{ t`自定义系统在扩展设置里创建与编辑；重新绑定会重置本聊天数据。` }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import toastr from 'toastr';
 import { storeToRefs } from 'pinia';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { pinia } from '@/pinia';
 import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
@@ -50,6 +56,15 @@ const { settings } = storeToRefs(useSettingsStore(pinia));
 
 const system = computed(() => game.activeSystem);
 const allSystems = computed<SystemDef[]>(() => [...BUILTIN_SYSTEMS, ...settings.value.customSystems]);
+
+/** 绑定状态下收起网格，点「更换系统」展开 */
+const showGrid = ref(!game.activeSystem);
+watch(
+  () => game.state.activeSystemId,
+  id => {
+    showGrid.value = !id;
+  },
+);
 
 async function activate(candidate: SystemDef): Promise<void> {
   if (candidate.id === system.value?.id) {
@@ -88,7 +103,7 @@ async function deactivate(): Promise<void> {
 .gf-current-system {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 12px;
   border-radius: var(--gf-radius-md);
   background: linear-gradient(120deg, color-mix(in srgb, var(--gf-accent) 18%, transparent), var(--gf-bg-1));

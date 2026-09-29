@@ -13,19 +13,12 @@
     <div v-else class="gf-empty">
       <i class="fa-solid fa-box-open gf-empty-icon"></i>
       {{ t`空空如也。去商店淘点好东西吧。` }}
-      <button class="gf-secondary-btn" @click="openPage('shop')">
-        <i class="fa-solid fa-store"></i> {{ system?.shopName ?? t`商店` }}
-      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { openPage } from '@/core/window-state';
-import { pinia } from '@/pinia';
 import { useGameStore } from '@/store/game';
 
-const game = useGameStore(pinia);
-const system = computed(() => game.activeSystem);
+const game = useGameStore();
 </script>

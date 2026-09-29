@@ -31,6 +31,16 @@ export const PromptModule = z.object({
 
 export type PromptModule = z.infer<typeof PromptModule>;
 
+/** 楼层过滤规则（生成前清洗参考文本，三型同 choice 的 ChatFilterRule）：
+ *  tag = 剥成对标签（含内容）；regex = 正则替换（自动 gs 标志）；extract = 只保留指定标签内容（仅 AI 楼层） */
+export const StoryFilterRule = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('tag'), start: z.string(), end: z.string() }),
+  z.object({ type: z.literal('regex'), pattern: z.string(), replace: z.string() }),
+  z.object({ type: z.literal('extract'), tagName: z.string() }),
+]);
+
+export type StoryFilterRule = z.infer<typeof StoryFilterRule>;
+
 /** 可用变量：{{user}}/{{persona}} 交由酒馆 substituteParams 与运行时分别填充，其余为系统状态 */
 export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
   {
@@ -93,6 +103,12 @@ export const Settings = z
     storyMessages: z.number().int().min(2).max(30).default(10).catch(10),
     /** 任务生成时单条消息的最大截取长度 */
     storyMessageLength: z.number().int().min(50).max(600).default(160).catch(160),
+    /** 生成任务/商品时读取角色卡核心字段 */
+    useCharCard: z.boolean().default(true),
+    /** 生成任务/商品时读取已激活的世界书条目 */
+    useWorldInfo: z.boolean().default(true),
+    /** 生成前对参考楼层执行的过滤规则（剥思维链/HTML/套话等） */
+    storyFilterRules: z.array(StoryFilterRule).default([]),
     api: ApiSettings.prefault({}),
     /** 注入提示词模板（可编辑；default 用工厂防共享引用被就地污染） */
     promptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_PROMPT_MODULES)),
