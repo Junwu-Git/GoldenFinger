@@ -9,3 +9,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# unplugin 生成物，构建时自动再生成
+auto-imports.d.ts
+auto-imports.zod.d.ts
+components.d.ts
+
+# 本地工具目录/状态
+.mimosa/
+.zcode/
+.zcodeignore
