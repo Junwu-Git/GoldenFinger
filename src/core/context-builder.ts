@@ -97,13 +97,7 @@ async function getWorldInfoBlock(context: any): Promise<string | null> {
     .filter((group: any) => (group.depth ?? 99) <= 2)
     .flatMap((group: any) => (group.entries ?? []).map((entry: any) => String(entry.content ?? '')));
 
-  const blocks = [
-    result.worldInfoBefore,
-    result.worldInfoAfter,
-    ...depthContents,
-    result.anBefore,
-    result.anAfter,
-  ]
+  const blocks = [result.worldInfoBefore, result.worldInfoAfter, ...depthContents, result.anBefore, result.anAfter]
     .map(block => String(block ?? '').trim())
     .filter(Boolean);
   return blocks.length > 0 ? blocks.join('\n\n') : null;

@@ -114,7 +114,9 @@
     <!-- 楼层过滤正则 -->
     <GfSectionCard v-model:open="filterOpen" :title="t`楼层过滤正则`" icon="fa-solid fa-filter">
       <div class="gf-setting-desc">
-        {{ t`生成任务/商品前对参考楼层执行：tag 剥成对标签、regex 正则替换、extract 只保留指定标签内容（仅 AI 楼层）。` }}
+        {{
+          t`生成任务/商品前对参考楼层执行：tag 剥成对标签、regex 正则替换、extract 只保留指定标签内容（仅 AI 楼层）。`
+        }}
       </div>
       <div v-for="(rule, index) in settings.storyFilterRules" :key="index" class="gf-rule-card">
         <div class="gf-rule-head">
@@ -141,7 +143,12 @@
         <template v-else-if="rule.type === 'regex'">
           <div class="gf-setting-col">
             <span class="gf-setting-label">{{ t`正则（自动挂 gs 标志）` }}</span>
-            <input v-model="rule.pattern" class="text_input gf-flex-input" type="text" placeholder="&lt;Status&gt;[\s\S]*?&lt;/Status&gt;" />
+            <input
+              v-model="rule.pattern"
+              class="text_input gf-flex-input"
+              type="text"
+              placeholder="&lt;Status&gt;[\s\S]*?&lt;/Status&gt;"
+            />
           </div>
           <div class="gf-setting-col">
             <span class="gf-setting-label">{{ t`替换为（留空 = 删除）` }}</span>
@@ -155,7 +162,9 @@
           </div>
         </template>
       </div>
-      <button class="menu_button" @click="addFilterRule"><i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加规则` }}</button>
+      <button class="menu_button" @click="addFilterRule">
+        <i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加规则` }}
+      </button>
     </GfSectionCard>
 
     <!-- 提示词注入 -->
