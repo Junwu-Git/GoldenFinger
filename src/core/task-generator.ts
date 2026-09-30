@@ -6,7 +6,13 @@ import { buildCharSlots, buildPersonaContext, buildWorldInfoSlots } from '@/core
 import { parseJsonFromText } from '@/core/json';
 import { buildVars, fillVars } from '@/core/prompt-vars';
 import { type GameState, ParsedTask, type SystemDef } from '@/type/game';
-import { DEFAULT_GENERATE_MODULES, DEFAULT_SHOP_MODULES, type PromptModule, type Settings, type StoryFilterRule } from '@/type/settings';
+import {
+  DEFAULT_GENERATE_MODULES,
+  DEFAULT_SHOP_MODULES,
+  type PromptModule,
+  type Settings,
+  type StoryFilterRule,
+} from '@/type/settings';
 
 /** 通过 API 异步生成一批新任务（纯函数：不碰状态，由 store 落账） */
 export async function generateTasksViaApi(
@@ -123,7 +129,8 @@ export async function composeShopMessages(
 
 /** 生成域模块：域被删空时回落默认模板；全禁用是明确意图，组装出空请求由调用方报错 */
 function pickModules(settings: Settings, kind: 'task' | 'shop'): PromptModule[] {
-  const source = kind === 'shop' ? settings.shopPromptModules : settings.promptModules.filter(m => m.scope === 'generate');
+  const source =
+    kind === 'shop' ? settings.shopPromptModules : settings.promptModules.filter(m => m.scope === 'generate');
   if (source.length === 0) {
     return structuredClone(kind === 'shop' ? DEFAULT_SHOP_MODULES : DEFAULT_GENERATE_MODULES);
   }

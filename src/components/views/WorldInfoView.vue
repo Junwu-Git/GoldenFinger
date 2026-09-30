@@ -24,7 +24,9 @@
         <span class="gf-setting-label">{{ t`轮数（每轮=用户+助手 2 层）` }}</span>
         <input v-model.number="settings.contextRounds" class="text_input gf-number" type="number" min="1" max="30" />
       </div>
-      <div class="gf-setting-desc">{{ t`任务生成参考最近剧情的取景：可见消息=全部可见楼层，轮数=最近 N 轮（剔除隐藏楼层），不逐条截断。` }}</div>
+      <div class="gf-setting-desc">
+        {{ t`任务生成参考最近剧情的取景：可见消息=全部可见楼层，轮数=最近 N 轮（剔除隐藏楼层），不逐条截断。` }}
+      </div>
     </GfSectionCard>
 
     <!-- 世界书控制：逐书 关闭/默认/强制，直接用酒馆已配置的书，不必手动重录 -->

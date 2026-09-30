@@ -27,7 +27,14 @@ export function refreshInjection(): void {
   }
 
   // 注入位置恒为对话内（IN_CHAT），按 injectionDepth 深度靠近最近楼层；不再提供主提示词区选项
-  setExtensionPrompt(INJECTION_KEY, text, extension_prompt_types.IN_CHAT, settings.injectionDepth, false, extension_prompt_roles.SYSTEM);
+  setExtensionPrompt(
+    INJECTION_KEY,
+    text,
+    extension_prompt_types.IN_CHAT,
+    settings.injectionDepth,
+    false,
+    extension_prompt_roles.SYSTEM,
+  );
 }
 
 /** 按 settings.promptModules 的 inject 域拼装注入文本：enabled 模块依序填充变量后拼接（generate 域归任务生成请求） */
