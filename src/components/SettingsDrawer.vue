@@ -11,7 +11,7 @@
           <span>{{ t`启用金手指（注入提示词给正文 AI）` }}</span>
         </label>
         <div class="gf-setting-desc">
-          {{ t`API 配置、注入位置、提示词预览等已移到游戏面板的「设置」标签页。` }}
+          {{ t`提示词、世界书、正则、API 配置等已移到游戏面板的「配置」标签页。` }}
         </div>
 
         <div class="gf-setting-row">

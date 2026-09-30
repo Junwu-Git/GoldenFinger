@@ -1,53 +1,6 @@
 <template>
   <div class="gf-view">
-    <!-- 提示词模板（choice PromptEditor 式模块编辑） -->
-    <GfSectionCard :title="t`提示词模板`" icon="fa-solid fa-pen-to-square">
-      <template #extra>
-        <button class="gf-link-btn" :title="t`全部恢复默认模板`" @click="resetModules">
-          <i class="fa-solid fa-rotate-left"></i> {{ t`恢复默认` }}
-        </button>
-      </template>
-      <div class="gf-setting-desc">
-        {{ t`启用中的模块按顺序拼装后注入给正文 AI，双花括号变量会在注入时填充实际状态。` }}
-      </div>
-      <div
-        v-for="(module, index) in settings.promptModules"
-        :key="module.id"
-        class="gf-pm-card"
-        :class="{ off: !module.enabled }"
-      >
-        <div class="gf-pm-head">
-          <label class="checkbox_label gf-pm-toggle">
-            <input v-model="module.enabled" type="checkbox" />
-            <span>{{ module.name }}</span>
-          </label>
-          <button class="gf-link-btn" :title="t`恢复此模块的默认内容`" @click="resetModule(index)">
-            <i class="fa-solid fa-rotate-left"></i>
-          </button>
-        </div>
-        <textarea v-model="module.content" class="text_input gf-pm-textarea" rows="4"></textarea>
-      </div>
-      <div class="gf-var-hint">{{ varHint }}</div>
-    </GfSectionCard>
-
-    <!-- 提示词预览 -->
-    <GfSectionCard :title="t`提示词预览`" icon="fa-solid fa-eye">
-      <template #extra>
-        <span v-if="tokenCount !== null" class="gf-token-chip">{{ tokenCount }} tok</span>
-      </template>
-      <div v-if="!previewText" class="gf-empty-small">
-        {{ t`当前没有注入内容：未绑定系统，或总开关已关闭。` }}
-      </div>
-      <template v-else>
-        <div class="gf-setting-desc">{{ t`以下文本会按当前位置/深度实时注入给正文 AI，随剧情状态自动更新。` }}</div>
-        <pre class="gf-prompt-pre">{{ previewText }}</pre>
-        <div class="gf-editor-actions">
-          <button class="menu_button" @click="copyPreview"><i class="fa-solid fa-copy"></i>&nbsp;{{ t`复制` }}</button>
-        </div>
-      </template>
-    </GfSectionCard>
-
-    <!-- 任务生成 API -->
+    <!-- 任务生成 API（提示词/世界书/正则等通用配置已拆到「配置」页） -->
     <GfSectionCard :title="t`任务生成 API`" icon="fa-solid fa-plug">
       <label class="gf-radio-row">
         <input v-model="draft.mode" type="radio" value="main" />
@@ -111,90 +64,6 @@
       </template>
     </GfSectionCard>
 
-    <!-- 楼层过滤正则 -->
-    <GfSectionCard v-model:open="filterOpen" :title="t`楼层过滤正则`" icon="fa-solid fa-filter">
-      <div class="gf-setting-desc">
-        {{
-          t`生成任务/商品前对参考楼层执行：tag 剥成对标签、regex 正则替换、extract 只保留指定标签内容（仅 AI 楼层）。`
-        }}
-      </div>
-      <div v-for="(rule, index) in settings.storyFilterRules" :key="index" class="gf-rule-card">
-        <div class="gf-rule-head">
-          <select class="gf-rule-type" :value="rule.type" @change="changeFilterRuleType(index, $event)">
-            <option value="tag">tag</option>
-            <option value="regex">regex</option>
-            <option value="extract">extract</option>
-          </select>
-          <span class="gf-flex"></span>
-          <button class="gf-link-btn" :title="t`删除`" @click="settings.storyFilterRules.splice(index, 1)">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
-        </div>
-        <template v-if="rule.type === 'tag'">
-          <div class="gf-setting-row">
-            <span class="gf-setting-label">{{ t`起始标签` }}</span>
-            <input v-model="rule.start" class="text_input gf-flex-input" type="text" placeholder="&lt;think&gt;" />
-          </div>
-          <div class="gf-setting-row">
-            <span class="gf-setting-label">{{ t`结束标签` }}</span>
-            <input v-model="rule.end" class="text_input gf-flex-input" type="text" placeholder="&lt;/think&gt;" />
-          </div>
-        </template>
-        <template v-else-if="rule.type === 'regex'">
-          <div class="gf-setting-col">
-            <span class="gf-setting-label">{{ t`正则（自动挂 gs 标志）` }}</span>
-            <input
-              v-model="rule.pattern"
-              class="text_input gf-flex-input"
-              type="text"
-              placeholder="&lt;Status&gt;[\s\S]*?&lt;/Status&gt;"
-            />
-          </div>
-          <div class="gf-setting-col">
-            <span class="gf-setting-label">{{ t`替换为（留空 = 删除）` }}</span>
-            <input v-model="rule.replace" class="text_input gf-flex-input" type="text" />
-          </div>
-        </template>
-        <template v-else>
-          <div class="gf-setting-row">
-            <span class="gf-setting-label">{{ t`标签名` }}</span>
-            <input v-model="rule.tagName" class="text_input gf-flex-input" type="text" placeholder="thinking" />
-          </div>
-        </template>
-      </div>
-      <button class="menu_button" @click="addFilterRule">
-        <i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加规则` }}
-      </button>
-    </GfSectionCard>
-
-    <!-- 提示词注入 -->
-    <GfSectionCard v-model:open="injectOpen" :title="t`提示词注入`" icon="fa-solid fa-syringe">
-      <label class="checkbox_label">
-        <input v-model="settings.enabled" type="checkbox" />
-        <span>{{ t`启用金手指（注入提示词给正文 AI）` }}</span>
-      </label>
-      <div class="gf-setting-row">
-        <span class="gf-setting-label">{{ t`注入位置` }}</span>
-        <select v-model="settings.injectionPosition" class="gf-setting-control">
-          <option value="in_chat">{{ t`对话内（推荐）` }}</option>
-          <option value="in_prompt">{{ t`主提示词区` }}</option>
-        </select>
-      </div>
-      <div class="gf-setting-row">
-        <span class="gf-setting-label">{{ t`注入深度（对话内生效）` }}</span>
-        <input v-model.number="settings.injectionDepth" class="text_input gf-number" type="number" min="0" max="20" />
-      </div>
-      <div class="gf-setting-desc">{{ t`生成上下文（影响任务与商品和世界观的贴合度）` }}</div>
-      <label class="checkbox_label">
-        <input v-model="settings.useCharCard" type="checkbox" />
-        <span>{{ t`生成时包含角色卡（描述/性格/场景）` }}</span>
-      </label>
-      <label class="checkbox_label">
-        <input v-model="settings.useWorldInfo" type="checkbox" />
-        <span>{{ t`生成时包含已激活的世界书条目` }}</span>
-      </label>
-    </GfSectionCard>
-
     <!-- 自动发布 -->
     <GfSectionCard v-model:open="autoOpen" :title="t`自动发布任务`" icon="fa-solid fa-robot">
       <div class="gf-setting-row">
@@ -219,108 +88,16 @@
 <script setup lang="ts">
 import toastr from 'toastr';
 import { storeToRefs } from 'pinia';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import GfSectionCard from '@/components/shared/GfSectionCard.vue';
-import { buildInjectionText } from '@/core/injector';
 import { normalizeApiUrl } from '@/core/api-client';
 import { API_PRESETS, presetForApiUrl } from '@/core/api-presets';
-import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
-import { DEFAULT_PROMPT_MODULES } from '@/type/settings';
 
-const game = useGameStore();
 const settingsStore = useSettingsStore();
 const { settings } = storeToRefs(settingsStore);
 
-const injectOpen = ref(false);
 const autoOpen = ref(false);
-const filterOpen = ref(false);
-
-// #region 提示词模板
-
-// 变量清单放 script 里拼：模板里直接写 {{ }} 会被 Vue 当插值
-const varHint = computed(
-  () =>
-    `${t`可用变量`}: {{user}} {{systemName}} {{persona}} {{level}} {{currency}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}}`,
-);
-
-function resetModule(index: number): void {
-  const current = settings.value.promptModules[index];
-  const fallback = DEFAULT_PROMPT_MODULES.find(candidate => candidate.id === current?.id);
-  if (!current || !fallback) {
-    return;
-  }
-  current.content = fallback.content;
-  current.enabled = fallback.enabled;
-  current.name = fallback.name;
-}
-
-function resetModules(): void {
-  settings.value.promptModules = structuredClone(DEFAULT_PROMPT_MODULES);
-  toastr.success(t`已恢复默认模板`, t`金手指系统`);
-}
-
-// #endregion
-
-// #region 楼层过滤正则
-// 类型切换必须整体替换规则对象：discriminatedUnion 缺字段会让存档 zod 解析失败
-
-function addFilterRule(): void {
-  settings.value.storyFilterRules.push({ type: 'regex', pattern: '', replace: '' });
-}
-
-function changeFilterRuleType(index: number, event: Event): void {
-  const type = (event.target as HTMLSelectElement).value;
-  const rules = settings.value.storyFilterRules;
-  rules[index] =
-    type === 'tag'
-      ? { type: 'tag', start: '', end: '' }
-      : type === 'extract'
-        ? { type: 'extract', tagName: '' }
-        : { type: 'regex', pattern: '', replace: '' };
-}
-
-// #endregion
-
-// #region 提示词预览
-
-const previewText = computed(() => {
-  const system = game.activeSystem;
-  if (!system || !settings.value.enabled) {
-    return '';
-  }
-  return buildInjectionText(system, game.state, settings.value);
-});
-
-const tokenCount = ref<number | null>(null);
-watch(
-  previewText,
-  async text => {
-    if (!text) {
-      tokenCount.value = 0;
-      return;
-    }
-    try {
-      const context = window.SillyTavern?.getContext?.();
-      const count = await context?.getTokenCountAsync?.(text);
-      tokenCount.value = typeof count === 'number' ? count : null;
-    } catch {
-      tokenCount.value = null;
-    }
-  },
-  { immediate: true },
-);
-
-async function copyPreview(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(previewText.value);
-    toastr.success(t`已复制到剪贴板`, t`金手指系统`);
-  } catch {
-    toastr.error(t`复制失败`, t`金手指系统`);
-  }
-}
-
-// #endregion
 
 // #region 任务生成 API（草稿编辑，保存才生效）
 
@@ -398,73 +175,5 @@ async function fetchModels(): Promise<void> {
 
 .gf-model-list {
   max-height: 140px;
-}
-
-.gf-token-chip {
-  font-size: 11px;
-  font-family: monospace;
-  color: var(--gf-accent);
-  border: 1px solid var(--gf-border);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-
-.gf-pm-card {
-  margin-bottom: 8px;
-  border: 1px solid var(--gf-border);
-  border-radius: var(--gf-radius-sm);
-  background: var(--gf-bg-1);
-  padding: 7px 9px;
-}
-
-.gf-pm-card.off {
-  opacity: 0.55;
-}
-
-.gf-pm-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.gf-pm-toggle {
-  margin: 0;
-  font-weight: 600;
-}
-
-.gf-pm-textarea {
-  width: 100%;
-  resize: vertical;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.gf-var-hint {
-  font-family: var(--gf-font-mono);
-  font-size: 10.5px;
-  color: var(--gf-text-2);
-  line-height: 1.6;
-  word-break: break-all;
-}
-
-.gf-rule-card {
-  margin-bottom: 8px;
-  padding: 7px 9px;
-  border: 1px solid var(--gf-border);
-  border-radius: var(--gf-radius-sm);
-  background: var(--gf-bg-1);
-}
-
-.gf-rule-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.gf-rule-type {
-  width: 100px;
 }
 </style>

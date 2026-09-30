@@ -1,9 +1,14 @@
 import { z } from 'zod';
 
+/** 思维标签剥离（同 choice 的 STRIP_REASONING_TAGS_RE）：生成提示词要求先 <thinking> 自检再输出 JSON，
+ *  先剥掉思维标签块再抠 JSON，防止思维文本里出现的方括号/花括号污染区间候选 */
+const STRIP_REASONING_TAGS_RE =
+  /<(?:think(?:ing)?|reasoning|thought)>[\s\S]*?<\/(?:think(?:ing)?|reasoning|thought)>/gi;
+
 /** 候选顺序：裸区间 > 代码围栏 > 原文（多数模型会加前后缀或围栏） */
 export function extractJsonCandidates(raw: string, bracket: '{' | '[' = '{'): string[] {
   const close = bracket === '{' ? '}' : ']';
-  const trimmed = raw.trim();
+  const trimmed = raw.replace(STRIP_REASONING_TAGS_RE, '').trim();
   const candidates = [trimmed];
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced) {

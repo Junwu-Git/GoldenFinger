@@ -2,19 +2,11 @@ import toastr from 'toastr';
 import { saveMetadataDebounced } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import { generateTaskViaApi } from '@/core/task-generator';
+import { generateTasksViaApi } from '@/core/task-generator';
 import { generateShopShelf } from '@/core/shop-generator';
 import { useSettingsStore } from '@/store/settings';
 import { findSystem } from '@/systems/builtin';
-import {
-  GameState,
-  expToNext,
-  type LogKind,
-  type ParsedTask,
-  type SystemDef,
-  type Task,
-  type TaskStatus,
-} from '@/type/game';
+import { GameState, expToNext, type LogKind, type SystemDef, type Task, type TaskStatus } from '@/type/game';
 import { validateInplace } from '@/util/zod';
 
 /** 金手指游玩状态在聊天元数据中的字段名 */
@@ -100,8 +92,8 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     log('system', t`系统已解绑。`);
   }
 
-  /** 通过 API 异步发布新任务 */
-  async function issueTask(): Promise<Task> {
+  /** 通过 API 异步发布一批新任务：数量 = 剩余任务位，一次把任务栏派满 */
+  async function issueTasks(): Promise<Task[]> {
     const system = activeSystem.value;
     if (!system) {
       throw new Error(t`尚未绑定系统`);
@@ -109,31 +101,38 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     if (generating.value) {
       throw new Error(t`上一个任务还在生成中`);
     }
-    if (activeTasks.value.length >= system.maxActiveTasks) {
+    const slots = system.maxActiveTasks - activeTasks.value.length;
+    if (slots <= 0) {
       throw new Error(t`进行中的任务已达上限（${system.maxActiveTasks}个）`);
     }
 
     generating.value = true;
     try {
-      const parsed: ParsedTask = await generateTaskViaApi(system, state.value, settingsStore.settings);
-      state.value.taskCounter += 1;
-      const task: Task = {
-        ...parsed,
-        id: `T${String(state.value.taskCounter).padStart(3, '0')}`,
-        status: 'active',
-        createdAt: Date.now(),
-        closedAt: null,
-      };
-      state.value.tasks.push(task);
+      const parsedList = await generateTasksViaApi(system, state.value, settingsStore.settings, slots);
+      const created: Task[] = [];
+      for (const parsed of parsedList) {
+        state.value.taskCounter += 1;
+        const task: Task = {
+          ...parsed,
+          id: `T${String(state.value.taskCounter).padStart(3, '0')}`,
+          status: 'active',
+          createdAt: Date.now(),
+          closedAt: null,
+        };
+        state.value.tasks.push(task);
+        created.push(task);
+      }
       state.value.msgCounter = 0;
-      log('task', t`发布任务 ${task.id}《${task.title}》`);
-      return task;
+      for (const task of created) {
+        log('task', t`发布任务 ${task.id}《${task.title}》`);
+      }
+      return created;
     } finally {
       generating.value = false;
     }
   }
 
-  /** AI 回复计数；达到自动发布条件时返回 true（由调用方触发 issueTask） */
+  /** AI 回复计数；达到自动发布条件时返回 true（由调用方触发 issueTasks） */
   function noteAutoIssue(): boolean {
     const { settings } = settingsStore;
     if (!settings.enabled || !settings.autoIssue || !state.value.activeSystemId) {
@@ -309,7 +308,7 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     reload,
     activateSystem,
     deactivateSystem,
-    issueTask,
+    issueTasks,
     noteAutoIssue,
     setTaskStatus,
     resetState,

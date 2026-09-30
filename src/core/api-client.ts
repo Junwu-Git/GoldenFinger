@@ -70,16 +70,17 @@ export async function requestTaskCompletion({ messages, mainResponseLength }: Ap
   const { api } = useSettingsStore().settings;
 
   if (api.mode !== 'secondary') {
-    const systemMsg = messages.find(m => m.role === 'system');
-    const userMsg = messages.findLast(m => m.role === 'user');
-    if (!userMsg) {
+    if (!messages.some(m => m.role === 'user')) {
       throw new Error('任务提示词缺少 user 消息');
     }
+    // 主 API 把完整 messages 数组作为 prompt 交给酒馆核心 generateRaw 发出（GenerateRawParams.prompt
+    // 接受 string | object[]，createRawPrompt 逐条保留 role/content）。原实现只取首条 system + 末条 user
+    // 压缩成单段 prompt，导致 gen_story 剧情摘要/gen_world/gen_state/契约/预填等中间消息全部丢失——
+    // 聊天记录从未真正到达 AI。改为整段发出，与副 API 直连（messages 原样）语义一致。
     return await generateRaw({
-      prompt: userMsg.content,
-      systemPrompt: systemMsg?.content ?? '',
-      responseLength: mainResponseLength,
+      prompt: messages,
       trimNames: false,
+      responseLength: mainResponseLength,
     });
   }
 

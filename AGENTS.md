@@ -29,29 +29,31 @@ SillyTavern 第三方扩展，基于 `tavern_extension_template`（与 choice �
 - **判定标记**：`[任务完成:T001]` / `[任务失败:T001]`（中英冒号与空白宽容）。正则单一来源 `core/injector.ts` 的 `MARKER_REGEX`，注入文本中的示例与它保持一致。结算对非 active 任务幂等。**「完成」没有手动入口**（玩家自结算已按用户要求移除）——完成唯一来自 AI 标记；面板上唯一的玩家操作是「放弃」（`setTaskStatus(id,'failed','manual')`，带确认弹窗），AI 漏判时用它腾出任务位。
 - **货币判定**：奖励 `name === state.currencyName` 入 points，否则入背包（同名合并 count）。`normalizeTask` 已把「含货币名的奖励」归一，AI 稍微跑偏也能正确入账。
 - **升级曲线**：`expToNext(level) = 60 + level * 60`（120 起步）。升级在结算末尾 while 循环处理，允许一次跨多级。
-- **自动发布**：`noteAutoIssue()` 每 AI 回复（type 非 quiet）计数一次，达到 `autoIssueInterval` 且任务未满才返回 true；`issueTask` 成功后清零计数。
-- **提示词模块化**：注入文本 = `settings.promptModules` 中 enabled 模块依序拼装，`{{变量}}` 由 `injector.buildVars` 填充（{{user}} 交给酒馆 substituteParams）。默认模板单一来源 `type/settings.ts` 的 `DEFAULT_PROMPT_MODULES`（schema default 用 `structuredClone` 工厂防共享引用污染）；模块数组为空时运行时回落默认。改注入文案只需要动默认模板或让用户在设置页编辑，预览/注入共用同一构建函数。
-- **任务风格锚定**：taskHint 同时进 system 消息与 user 消息（user 层有【任务风格（必须严格遵守）】段 + 结尾硬性要求「宁可贴合风格，不要发布泛泛任务」）；内置系统的 taskHint 各带一句具体示例（如签到系统的「在城东钟楼敲响晚钟完成今日黄昏签到」）。改风格产出先动 taskHint，不要加泛泛的系统指令。
-- **商店**：货架由 `core/shop-generator.ts` 生成（JSON 数组 4~6 件，提示词内写死价格带：普通 10~50 / 稀有 50~200 / 传说 200~1000，按宿主等级微调），逐件 zod 校验，失败保留旧货架。`GameState.shop` 为 null 表示从未开店；**首次进店 `ensureShop` 免费开张，`refreshShop` 换一批扣 `system.refreshCost`（失败退款）**；`buyItem` 即时结算（扣款→背包合并→库存-1）。稀有度 rarity 1~3（普通灰/稀有蓝/传说金），色板单一来源 `--gf-rarity-N`(+soft)。
-- **生成上下文（角色卡/世界书/过滤）**：`core/context-builder.ts` 组装「世界观背景」块进任务/商品生成提示词。世界书**直接调酒馆原生 `getWorldInfoPrompt`**（倒序楼层 + 128000 预算 + trigger:'normal'，关键字/概率/深度全由酒馆管线处理，同 choice 的 buildWI；不自己造激活判定），before/after + depth≤2 条目聚合，总量截断防爆炸；角色卡读 context.characters 的描述/性格/场景（群聊跳过）。楼层过滤 `storyFilterRules`（tag/regex/extract 三型 discriminatedUnion）在 `buildStoryContext` 逐层执行，顺序 extract→tag→regex、清空丢层、非法正则跳过；**类型切换必须整体替换规则对象**（缺字段会让存档 zod 解析崩）。
+- **自动发布**：`noteAutoIssue()` 每 AI 回复（type 非 quiet）计数一次，达到 `autoIssueInterval` 且任务未满才返回 true；`issueTasks` 成功后清零计数。默认开启、节奏 3 楼（v2 迁移统一提升）；自动发布成功有「叮！」toast。
+- **任务批量派发**：`issueTasks` 一次生成「剩余任务位」个任务把任务栏派满（maxActiveTasks=1 的系统仍一次 1 个）；提示词要求批内目标不重叠、难度有梯度；解析兼容单对象兜底，超出空位截断。
+- **提示词模块化（choice 式双域模块，v5 起生成域为 choice 六段式）**：`PromptModule = {id, name, scope, role, marker, enabled, content}`。`scope='inject'` 域按序拼装注入文本；`scope='generate'` 域按序组装成任务生成请求的 messages——默认结构 = 系统定位(system) → 应答声明(assistant) → 资料槽(state/world/story, **system**) → 信息边界+契约+思考框架(system) → 风格重申+生成请求(user) → 思维链预填(assistant)，合并后 `[sys][asst][sys][user][asst]`（资料槽为 system 是 choice 的语义：system 扛上下文数据、user 只承载任务指令）。**预填开关 `prefillEnabled`**：关闭时把所有 assistant 模块降级为 system（choice 的 prefill_enabled 兜底，兼容不支持预填的端点）。「编辑器显示 = 实际发送」；marker 槽 id 识别键 `gen_state`/`gen_world`/`gen_story`，其中 gen_story 会把最新一楼用 `<current_scene>` 包裹（同 choice 场景锚定）。默认模板单一来源 `type/settings.ts` 的 `DEFAULT_PROMPT_MODULES`（分域常量 DEFAULT_INJECT/GENERATE_MODULES；一律 `structuredClone` 防共享引用）；generate 域被**删空**才回落默认，全禁用是明确意图（组装出空请求由 api-client 报「缺少 user 消息」）。运行时变量由 `core/prompt-vars.ts` 的 `buildVars`/`fillVars` 填充（{{user}} 交给酒馆 substituteParams），生成域额外有 {{taskHint}}/{{taskCount}}。迁移 v3→v4 把能按 id 匹配的内置模块整体重排到新默认并刷新内容/角色（启停保留），custom_* 与未知 id 保留在末尾；v4→v5 只把三个资料槽 role 强制为 system。
+- **任务风格锚定**：taskHint 同时进 system 侧（gen_persona 模块）与 user 侧（gen_style 模块【任务风格（必须严格遵守）】+ gen_request 结尾硬性要求「宁可贴合风格，不要发布泛泛任务」）；内置系统的 taskHint 各带一句具体示例（如签到系统的「在城东钟楼敲响晚钟完成今日黄昏签到」）。改风格产出先动 taskHint，不要加泛泛的系统指令。
+- **输出链路（v4 起）**：生成提示词要求先 `<thinking>` 自检再输出 JSON；解析前由 `core/json.ts` 剥离思维标签（`STRIP_REASONING_TAGS_RE`，同 choice）防方括号污染区间候选。主 API 走 generateRaw 的**消息数组 + prefill 参数**（ST `createRawPrompt`：chat 补全挂末尾 assistant、文本补全拼 prompt 尾部），副 API 直传 messages——两条路都吃 choice 式消息结构。
+- **商店**：货架由 `core/shop-generator.ts` 生成（JSON 数组一批正好 10 件，稀有度分布普通 5/稀有 3~4/传说 1~2，提示词内写死价格带：普通 10~50 / 稀有 50~200 / 传说 200~1000，按宿主等级微调），逐件 zod 校验，失败保留旧货架。`GameState.shop` 为 null 表示从未开店；**首次进店 `ensureShop` 免费开张，`refreshShop` 换一批扣 `system.refreshCost`（失败退款）**；`buyItem` 即时结算（扣款→背包合并→库存-1）。稀有度 rarity 1~3（普通灰/稀有蓝/传说金），色板单一来源 `--gf-rarity-N`(+soft)。
+- **生成上下文（角色卡/世界书/过滤）**：`core/context-builder.ts` 组装「世界观背景」块进任务/商品生成提示词。角色卡读 context.characters 的描述/性格/场景（群聊跳过）。世界书两条路：**默认走酒馆原生 `getWorldInfoPrompt`**（倒序楼层 + 128000 预算 + trigger:'normal'，关键字/概率/深度全由酒馆管线处理，同 choice 的 buildWI；不自己造激活判定），before/after + depth≤2 条目聚合，总量截断防爆炸；**书层覆盖**（`worldBookOverrides`：书名→off/force/default）配置了任一 off/force 时退出手动组装参与书集（激活源未 off 的书 + 所有 force 书，default 书跟随 entry.disable、force 无视）——手动组装不读写酒馆世界书缓存，故不影响正文主生成（choice 用缓存变异控制，本扩展刻意避免该副作用）。楼层过滤在 `buildStoryContext` 逐层执行：**先走酒馆原生正则**（`stRegexEnabled` 默认开，调 ST `getRegexedString`，直接用全局/预设/角色卡已配置的脚本、不必手动重录，同 choice 的 st_regex——placement 按楼层来源、depth 从生成点往回算，限定 minDepth/maxDepth 的脚本才生效；脚本清空该层即整条丢弃）再走本页 `storyFilterRules`（tag/regex/extract 三型），顺序 extract→tag→regex、清空丢层、非法正则跳过；任务与商品生成共用此函数。**类型切换必须整体替换规则对象**（缺字段会让存档 zod 解析崩）。
 
 ## UI 要点（现状，可改）
 
-- **UI 布局是五标签主面板且常显**：首页/商店/背包/日志/设置五个 tab 无论是否绑定系统都在（未绑定不隐藏 UI，这是用户明确要的）；首页顶部是系统块（绑定=当前系统卡+「更换系统」展开网格，未绑定=直接铺选择网格）；商店未绑定时显示引导而非空白。拖拽是**手写 pointer 实现**（header 为把手、按钮除外、touch-action:none、位置在 pointerup 时才落盘）——曾用 @vueuse useDraggable 出过「完全拖不动」，回退手写前先想清楚。
-  - 页面组件在 `views/`：Home（系统块+状态+任务直铺）/ Shop / Inventory / Log / Settings / SystemSelect（选系统，被 Home 复用）；`core/window-state.ts` 与 GfWindow 已随双层结构方案废弃删除。
+- **UI 布局是主面板常显 + choice 式两级导航**：一级 6 页（首页/商店/背包/日志/配置/设置）无论是否绑定系统都在（未绑定不隐藏 UI，这是用户明确要的）；「配置」页带二级子区条，切换 **提示词/世界书/正则** 三个子界面——三者编辑的是全局通用配置（extension_settings.golden_finger），**不随绑定系统切换而变化**，导航定义单一来源 `shared/tab-definitions.ts`（PAGES + CONFIG_SUB_TABS，照 choice 模式）。首页顶部是系统块（绑定=当前系统卡+「更换系统」展开网格，未绑定=直接铺选择网格）；商店未绑定时显示引导而非空白。拖拽是**手写 pointer 实现**（header 为把手、按钮除外、touch-action:none、位置在 pointerup 时才落盘）——曾用 @vueuse useDraggable 出过「完全拖不动」，回退手写前先想清楚。
+  - 页面组件在 `views/`：Home（系统块+状态+任务直铺）/ Shop / Inventory / Log / Settings（仅 任务生成API+自动发布）/ Prompt（注入设置+模板+双预览）/ WorldInfo（生成上下文+剧情上下文+已激活世界书只读列表）/ Regex（楼层过滤规则）/ SystemSelect（选系统，被 Home 复用）；`core/window-state.ts` 与 GfWindow 已随双层结构方案废弃删除。
 - 主视觉「每系统主题色 `--gf-accent` + 暗色玻璃」；全部颜色/圆角/间距收成 `--gf-*` token（背景三层/文字三层/稀有度双色板），换肤只动 token。生成中走 header 下缘 shimmer 光带；视图切换 fade-slide；货架 stagger 入场。
 - 空状态统一「大图标 + 风味文案 +（可选）行动按钮」；余额不足一律按钮置灰（不弹 toast），操作失败才 toast。
-- **提示词在设置页两段呈现**：`提示词模板`（模块卡：名称+启停+textarea，单模块恢复/全部恢复默认，变量清单在脚本里拼——模板里直写 `{{ }}` 会被 Vue 吃掉）+ `提示词预览`（compose 结果只读镜像 + `getTokenCountAsync` token 数 + 复制）。
+- **提示词/世界书/正则在「配置」页分三个子界面呈现**（通用配置，见上）：`提示词`（提示词注入：总开关/位置/深度；`提示词模板`：双域分区注入模板+任务生成模板，普通模块卡=名称+启停+role 下拉[生成域]+上移/下移+单模块恢复+删除+textarea，marker 槽带锁只可调位置与角色/启停，可添加自定义模块，变量清单在脚本里拼——模板里直写 `{{ }}` 会被 Vue 吃掉；`提示词预览`：注入 compose 结果只读镜像+`getTokenCountAsync` token 数+复制；`生成请求预览`：composeTaskMessages 的 [role] 分段只读镜像，展开时才组装）。`世界书`（生成上下文开关 useCharCard/useWorldInfo + 剧情上下文 storyMessages/storyMessageLength + **世界书控制**：`listAllWorldBooks` 列出全库书、逐书 关闭/默认/强制 三态写入 `worldBookOverrides`，参与书置顶、未激活淡显）。`正则`（**走酒馆正则开关 stRegexEnabled** + 楼层过滤 storyFilterRules 编辑器）。
 - 悬浮主面板 v-show 保挂载，拖拽为手写 pointer 实现（位置持久化，见上）；有历史数据时激活新系统先弹酒馆 Popup 确认（防误清空）。
 - i18n：界面文本全部 `t\`\``，插值 key 形如 `发布任务 ${0}《${1}》`，en.json 按此映射（新增文案后跑 key 对齐检查：0 missing / 0 unused / 0 重复）；注入给 AI 的提示词文本刻意不翻译（剧情语言）。
 
 ## 目录
 
-- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、context-builder（角色卡+世界书上下文，getWorldInfoPrompt 直调）、task-generator（任务生成+解析+楼层过滤）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、injector（模块化注入+判定标记）、wand-menu（魔棒入口，轮询注入）。
-- `src/store/`：settings（全局设置）、game（游玩状态+任务结算+商店 actions）。
-- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema + DEFAULT_PROMPT_MODULES + StoryFilterRule，SCHEMA_VERSION=1）。
+- `src/core/`：api-client（主/副 API 统一入口）、api-presets（服务商预设）、context-builder（角色卡+世界书上下文，getWorldInfoPrompt 直调 + 书层覆盖离线组装；listActiveWorldBooks/listAllWorldBooks 枚举世界书）、task-generator（任务生成+模块组装 composeTaskMessages+解析+楼层过滤）、shop-generator（货架生成+解析）、json.ts（LLM 文本抠 JSON 共用工具）、prompt-vars（buildVars/fillVars/rewardText 纯函数，注入与生成共用）、injector（模块化注入+判定标记）、wand-menu（魔棒入口，轮询注入）。
+- `src/store/`：settings（全局设置+逐版本迁移 migrateSettings）、game（游玩状态+任务结算+商店 actions）。
+- `src/type/`：game.ts（SystemDef/Task/ShopItem/GameState schema）、settings.ts（Settings schema + DEFAULT_PROMPT_MODULES 双域默认 + StoryFilterRule，SCHEMA_VERSION=5）。
 - `src/systems/builtin.ts`：5 个内置系统（含 shopName/refreshCost）；`findSystem(id, customSystems)` 是 id → 定义的唯一解析点。
-- `src/components/`：GamePanel（五标签壳+手写拖拽）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Home/Shop/Inventory/Log/Settings/SystemSelect）、`shared/`（GfSectionCard、GfTaskCard）。
+- `src/components/`：GamePanel（一级 6 页+配置二级子区壳+手写拖拽）、SettingsDrawer（扩展抽屉：总开关/自定义系统/清数据）、`views/`（Home/Shop/Inventory/Log/Settings/Prompt/WorldInfo/Regex/SystemSelect）、`shared/`（GfSectionCard、GfTaskCard、tab-definitions 导航定义）。
 - `@types/`：酒馆助手类型包（全局 ambient 声明，无运行时产物）。
 
 ## 构建与验证
@@ -69,5 +71,6 @@ pnpm lint
 - 任务时限/失败惩罚的主动追踪（目前失败惩罚依赖任务 rewards 里的负数与 AI 演出）。
 - 签到系统的「每日一次」真实日历限制（当前签到任务由 AI 生成的剧情任务承载）。
 - 系统升级主动解锁新能力（当前等级只是称号与状态注入）；传说级商品的高级效果演出。
-- 提示词模块拖拽排序与多套模板配置切换（当前模块固定顺序、单一模板）。
+- 提示词模块拖拽排序（现为上移/下移按钮）与多套模板配置切换（choice 的 PromptConfig 式）。
+- 商店生成提示词模块化（当前 shop-generator 仍硬编码，任务生成已走模块系统）。
 - 世界书/角色卡联动（把系统状态同步写进世界书条目等）。

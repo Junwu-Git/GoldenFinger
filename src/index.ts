@@ -50,10 +50,16 @@ $(() => {
       }
       try {
         if (game.noteAutoIssue()) {
-          void game.issueTask().catch((error: unknown) => {
-            console.error('[GoldenFinger] 自动发布任务失败', error);
-            toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
-          });
+          void game
+            .issueTasks()
+            .then(tasks => {
+              // 自动发布是「系统主动找上门」的核心交互感来源，成功时必须可感知
+              toastr.info(t`叮！系统主动派发了 ${tasks.length} 个新任务`, t`金手指系统`);
+            })
+            .catch((error: unknown) => {
+              console.error('[GoldenFinger] 自动发布任务失败', error);
+              toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
+            });
         }
       } catch (error) {
         console.error('[GoldenFinger] 自动发布判定失败', error);

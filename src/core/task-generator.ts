@@ -1,101 +1,151 @@
 import { substituteParams } from '@sillytavern/script';
+import { getRegexedString, regex_placement } from '@sillytavern/scripts/extensions/regex/engine';
+import { z } from 'zod';
 import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
 import { buildWorldContext } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
+import { buildVars, fillVars } from '@/core/prompt-vars';
 import { type GameState, ParsedTask, type SystemDef } from '@/type/game';
-import type { Settings, StoryFilterRule } from '@/type/settings';
+import { DEFAULT_GENERATE_MODULES, type PromptModule, type Settings, type StoryFilterRule } from '@/type/settings';
 
-/** 要求 AI 严格输出任务 JSON 的说明（主路径），解析失败时另有括号启发式兜底在 parse 层 */
-const TASK_JSON_INSTRUCTIONS = `把新任务输出为一个严格的 JSON 对象：不要输出任何解释性文字、前后缀或代码块标记。字段如下：
-{
-  "title": "任务标题，12字以内，有画面感",
-  "description": "任务描述：交代背景、目标与紧迫感，80字以内",
-  "requirements": "完成条件：一句话，20字以内，必须是能依据剧情明确判定成败的行为",
-  "rewards": [{"name": "奖励名称", "amount": 数值}],
-  "expReward": 经验值数值,
-  "difficulty": 1到5的整数
-}
-生成要求：
-- rewards 给 1~3 条；货币奖励的 name 必须使用给定的货币名称原文，物品奖励使用具体物品名称。
-- expReward 建议 20~150，与难度正相关；amount 一般为正数。
-- difficulty 与剧情张力匹配：日常小事 1~2，生死攸关 5。
-- 任务要贴合宿主当前的能力与处境，能通过剧情行动完成，而不是纯运气事件。`;
-
-/** 通过 API 异步生成一个新任务（纯函数：不碰状态，由 store 落账） */
-export async function generateTaskViaApi(
+/** 通过 API 异步生成一批新任务（纯函数：不碰状态，由 store 落账） */
+export async function generateTasksViaApi(
   system: SystemDef,
   gameState: GameState,
   settings: Settings,
-): Promise<ParsedTask> {
-  const story = buildStoryContext(settings.storyMessages, settings.storyMessageLength, settings.storyFilterRules);
-  const worldContext = await buildWorldContext(settings);
-  const activeTasks = gameState.tasks.filter(task => task.status === 'active');
-
-  const stateLines = [
-    `宿主等级：Lv.${gameState.level}`,
-    `持有货币：${gameState.currencyName} ×${gameState.points}`,
-    ...(gameState.inventory.length
-      ? [`持有物品：${gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')}`]
-      : []),
-    `进行中的任务：${activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('；') || '无'}`,
-  ];
-
-  // 角色结构：system 放规则与人格，user 放状态、剧情上下文与本次请求
-  const systemMsg: ChatMsg = {
-    role: 'system',
-    content: [
-      `你在一部互动小说中扮演绑定于主角的「金手指」——「${system.name}」。`,
-      system.persona,
-      `你发布的每一个任务都必须体现「${system.name}」的核心设定与风格。`,
-      system.taskHint,
-      `货币名称（奖励里必须严格使用）：${system.currencyName}`,
-      TASK_JSON_INSTRUCTIONS,
-    ]
-      .filter(Boolean)
-      .join('\n\n'),
-  };
-
-  const userMsg: ChatMsg = {
-    role: 'user',
-    content: substituteParams(
-      [
-        '【当前系统状态】',
-        ...stateLines,
-        '',
-        ...(worldContext ? ['【世界观背景】', worldContext, ''] : []),
-        '【最近剧情】',
-        story || '（暂无剧情：请发布一个引导宿主迈出第一步的初始任务。）',
-        '',
-        '【任务风格（必须严格遵守）】',
-        system.taskHint,
-        '',
-        `请以「${system.name}」的身份与设定，结合世界观与最近剧情，发布一个严格符合上述风格、与当前情境有机衔接的新任务；宁可贴合风格，也不要发布与该风格无关的泛泛任务。只输出 JSON 对象本身。`,
-      ].join('\n'),
-    ),
-  };
-
+  count: number,
+): Promise<ParsedTask[]> {
+  const messages = await composeTaskMessages(system, gameState, settings, count);
   const raw = await requestTaskCompletion({
-    messages: [systemMsg, userMsg],
+    messages,
     mainResponseLength: settings.api.maxTokens,
   });
-
-  return parseTaskJson(raw, system);
+  return parseTasksJson(raw, system).slice(0, count);
 }
 
-/** 取最近 N 条消息拼成「名字：内容」的剧情摘要，单条截断防 token 爆炸；过滤规则同 choice 的楼层清洗 */
-export function buildStoryContext(count: number, maxLength: number, filterRules: StoryFilterRule[] = []): string {
+/**
+ * 按设置里的 generate 域模块组装任务生成请求（choice 式「模块即消息」）：
+ * 普通模块经变量替换后按自身 role 产出消息；marker 槽位产出系统数据（状态/世界观/剧情，空则跳过）；
+ * 生成请求全是系统指令文本、不含聊天楼层展开，相邻同 role 全部合并（不同于 choice 的 user 不合并）。
+ * 导出供设置页做「所见即所发」的请求预览。
+ */
+export async function composeTaskMessages(
+  system: SystemDef,
+  gameState: GameState,
+  settings: Settings,
+  count: number,
+): Promise<ChatMsg[]> {
+  const vars = {
+    ...buildVars(system, gameState),
+    taskHint: system.taskHint,
+    taskCount: String(count),
+  };
+  const modules = pickGenerateModules(settings);
+  const worldContext = await buildWorldContext(settings);
+  const story = buildStoryContext(
+    settings.storyMessages,
+    settings.storyMessageLength,
+    settings.storyFilterRules,
+    settings.stRegexEnabled,
+  );
+
+  // 预填开关关闭时 assistant 模块降级为 system（同 choice 的 prefill_enabled 兜底），顺序不变
+  const prefillOn = settings.prefillEnabled;
+  const msgs: ChatMsg[] = [];
+  for (const module of modules) {
+    const content = module.marker
+      ? markerContent(module.id, gameState, worldContext, story)
+      : fillVars(module.content, vars);
+    if (!content?.trim()) {
+      continue;
+    }
+    const role = !prefillOn && module.role === 'assistant' ? 'system' : module.role;
+    msgs.push({ role, content: substituteParams(content) });
+  }
+
+  const merged: ChatMsg[] = [];
+  for (const msg of msgs) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === msg.role) {
+      last.content = `${last.content}\n\n${msg.content}`;
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+  return merged;
+}
+
+/** generate 域模块：域被删空时回落默认模板；全禁用是明确意图，组装出空请求由调用方报错 */
+function pickGenerateModules(settings: Settings): PromptModule[] {
+  const present = settings.promptModules.filter(module => module.scope === 'generate');
+  if (present.length === 0) {
+    return structuredClone(DEFAULT_GENERATE_MODULES);
+  }
+  return present.filter(module => module.enabled);
+}
+
+/** marker 槽位的运行时内容：id 是识别键（与默认模块的 id 一一对应），无内容返回空串跳过 */
+function markerContent(id: string, gameState: GameState, worldContext: string, story: string): string {
+  switch (id) {
+    case 'gen_state': {
+      const activeTasks = gameState.tasks.filter(task => task.status === 'active');
+      return [
+        '【当前系统状态】',
+        `宿主等级：Lv.${gameState.level}`,
+        `持有货币：${gameState.currencyName} ×${gameState.points}`,
+        ...(gameState.inventory.length
+          ? [`持有物品：${gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')}`]
+          : []),
+        `进行中的任务：${activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('；') || '无'}`,
+      ].join('\n');
+    }
+    case 'gen_world':
+      return worldContext.trim() ? `【世界观背景】\n${worldContext.trim()}` : '';
+    case 'gen_story': {
+      if (!story.trim()) {
+        return '【最近剧情】\n（暂无剧情：请发布一批引导宿主迈出第一步的初始任务。）';
+      }
+      // 最新一楼用 <current_scene> 包裹（同 choice 的场景锚定）：给模型一个明确的「当前场景」边界，
+      // 生成请求里「以 <current_scene> 标记的最新进展为准」与它呼应
+      const lines = story.split('\n');
+      const latest = lines.pop()?.trim() ?? '';
+      return ['【最近剧情】', ...lines, `<current_scene>${latest}</current_scene>`].filter(Boolean).join('\n');
+    }
+    default:
+      return '';
+  }
+}
+
+/** 取最近 N 条消息拼成「名字：内容」的剧情摘要，单条截断防 token 爆炸；
+ *  stRegexEnabled 时每条先过酒馆原生正则（直接用全局/预设/角色卡已配置的脚本，不必手动重录），
+ *  再走本页过滤规则（同 choice 的 st_regex 顺序）；本函数同时服务任务与商店生成。 */
+export function buildStoryContext(
+  count: number,
+  maxLength: number,
+  filterRules: StoryFilterRule[] = [],
+  stRegexEnabled = true,
+): string {
   // chat 元素是 ST 原生楼层结构，显式断言（见 types/ambient.d.ts）
   const chat = (window.SillyTavern?.getContext?.()?.chat ?? []) as StChatMessage[];
+  const recent = chat.slice(-count);
   const lines: string[] = [];
-  for (const message of chat.slice(-count)) {
+  for (let i = 0; i < recent.length; i++) {
+    const message = recent[i];
     if (typeof message.mes !== 'string' || !message.mes.trim()) {
       continue;
     }
     const context = window.SillyTavern?.getContext?.();
     const name = message.is_user ? context?.name1 : message.name || context?.name2 || '???';
-    const text = applyStoryFilters(message.mes, Boolean(message.is_user), filterRules);
-    if (text) {
-      lines.push(`${name}：${text.slice(0, maxLength).trim()}`);
+    // 先走酒馆正则：placement 按楼层来源、depth 从当前生成点(0)往回算——限定 minDepth/maxDepth
+    // 的脚本（如「只保留最近 N 层」）依赖它；脚本把楼层清空则整条丢弃（下方空文本判断处理）
+    let text = String(message.mes ?? '');
+    if (stRegexEnabled) {
+      const placement = message.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+      text = getRegexedString(text, placement, { isPrompt: true, depth: recent.length - 1 - i });
+    }
+    const filtered = applyStoryFilters(text, Boolean(message.is_user), filterRules);
+    if (filtered) {
+      lines.push(`${name}：${filtered.slice(0, maxLength).trim()}`);
     }
   }
   return lines.join('\n');
@@ -153,11 +203,16 @@ function applyStoryFilters(text: string, isUser: boolean, rules: StoryFilterRule
   return out || null;
 }
 
-/** 解析 AI 返回的任务：JSON 主路径（围栏/裸对象多候选）+ 字段归一化 */
-export function parseTaskJson(raw: string, system: SystemDef): ParsedTask {
-  const parsed = parseJsonFromText(raw, ParsedTask);
-  if (parsed) {
-    return normalizeTask(parsed, system);
+/** 解析 AI 返回的任务批次：JSON 数组主路径（围栏/裸数组多候选）+ 单对象兜底 + 字段归一化 */
+export function parseTasksJson(raw: string, system: SystemDef): ParsedTask[] {
+  const batch = parseJsonFromText(raw, z.array(ParsedTask).min(1).max(8), '[');
+  if (batch) {
+    return batch.map(task => normalizeTask(task, system));
+  }
+  // 部分模型无视数组要求只回一个对象：能救回一个总比报错重试强
+  const single = parseJsonFromText(raw, ParsedTask, '{');
+  if (single) {
+    return [normalizeTask(single, system)];
   }
   console.error('[GoldenFinger] 任务生成原始输出：', raw);
   throw new Error(t`AI 没有返回有效的任务 JSON，请重试`);

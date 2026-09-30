@@ -11,7 +11,7 @@ import type { Settings } from '@/type/settings';
 const SHELF_SCHEMA = z
   .array(ShopItem.omit({ id: true }))
   .min(1)
-  .max(8);
+  .max(12);
 
 const SHELF_INSTRUCTIONS = `把一批商店商品输出为严格的 JSON 数组：不要输出任何解释性文字、前后缀或代码块标记。每个元素字段如下：
 {
@@ -22,9 +22,9 @@ const SHELF_INSTRUCTIONS = `把一批商店商品输出为严格的 JSON 数组�
   "rarity": 1到3的整数
 }
 生成要求：
-- 一批 4~6 件；rarity 分布大致为 普通(1) 2~3 件、稀有(2) 1~2 件、传说(3) 0~1 件。
+- 一批正好 10 件，一件都不能少；rarity 分布大致为 普通(1) 5 件、稀有(2) 3~4 件、传说(3) 1~2 件。
 - 价格带：普通 10~50、稀有 50~200、传说 200~1000；再结合宿主当前的等级与持有货币微调，让「攒一攒够得着传说」有盼头。
-- 商品必须契合店铺气质与世界观，且能在剧情中实际派上用场（消耗品、情报、装备、机缘、服务皆可）。`;
+- 商品必须契合店铺气质与世界观，且能在剧情中实际派上用场（消耗品、情报、装备、机缘、服务皆可）；10 件之间品类尽量错开，不要凑数重复。`;
 
 /** 通过 API 异步生成一批货架商品（纯函数：不碰状态，由 store 落账） */
 export async function generateShopShelf(
@@ -60,7 +60,8 @@ export async function generateShopShelf(
         '',
         ...(worldContext ? ['【世界观背景】', worldContext, ''] : []),
         '【最近剧情】',
-        buildStoryContext(5, 120, settings.storyFilterRules) || '（暂无剧情：请上一批稳妥实用的开张货。）',
+        buildStoryContext(5, 120, settings.storyFilterRules, settings.stRegexEnabled) ||
+          '（暂无剧情：请上一批稳妥实用的开张货。）',
         '',
         `请根据世界观与当前状态上一批新货。只输出 JSON 数组本身。`,
       ].join('\n'),

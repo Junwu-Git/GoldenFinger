@@ -23,28 +23,45 @@
       <div v-if="game.generating || game.shopGenerating" class="gf-progress"></div>
     </div>
 
-    <!-- 标签栏：五个页面常显，未绑定也可浏览 -->
+    <!-- 一级标签栏：页面常显，未绑定也可浏览 -->
     <nav class="gf-tabs">
       <button
-        v-for="tab in tabs"
-        :key="tab.id"
+        v-for="page in PAGES"
+        :key="page.id"
         class="gf-tab"
-        :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
+        :class="{ active: activePage === page.id }"
+        @click="activePage = page.id"
       >
-        <i :class="tab.icon"></i>
-        <span class="gf-tab-label">{{ tab.label }}</span>
+        <i :class="page.icon"></i>
+        <span class="gf-tab-label">{{ page.label }}</span>
+      </button>
+    </nav>
+
+    <!-- 配置页二级子区条（choice 式）：提示词/世界书/正则是全局通用配置，不随系统切换 -->
+    <nav v-if="activePage === 'config'" class="gf-subtabs">
+      <button
+        v-for="sub in CONFIG_SUB_TABS"
+        :key="sub.id"
+        class="gf-subtab"
+        :class="{ active: configSubTab === sub.id }"
+        @click="configSubTab = sub.id"
+      >
+        <i :class="sub.icon"></i>
+        {{ sub.label }}
       </button>
     </nav>
 
     <!-- 内容区 -->
     <div class="gf-panel-body">
       <Transition name="gf-view" mode="out-in">
-        <HomeView v-if="activeTab === 'home'" @navigate="activeTab = $event" />
-        <ShopView v-else-if="activeTab === 'shop'" @navigate="activeTab = $event" />
-        <InventoryView v-else-if="activeTab === 'inventory'" />
-        <LogView v-else-if="activeTab === 'log'" />
-        <SettingsView v-else-if="activeTab === 'settings'" />
+        <HomeView v-if="activePage === 'home'" @navigate="activePage = $event" />
+        <ShopView v-else-if="activePage === 'shop'" @navigate="activePage = $event" />
+        <InventoryView v-else-if="activePage === 'inventory'" />
+        <LogView v-else-if="activePage === 'log'" />
+        <PromptView v-else-if="activePage === 'config' && configSubTab === 'prompt'" />
+        <WorldInfoView v-else-if="activePage === 'config' && configSubTab === 'worldinfo'" />
+        <RegexView v-else-if="activePage === 'config'" />
+        <SettingsView v-else />
       </Transition>
     </div>
   </div>
@@ -56,8 +73,12 @@ import { computed, ref } from 'vue';
 import HomeView from '@/components/views/HomeView.vue';
 import InventoryView from '@/components/views/InventoryView.vue';
 import LogView from '@/components/views/LogView.vue';
+import PromptView from '@/components/views/PromptView.vue';
+import RegexView from '@/components/views/RegexView.vue';
 import SettingsView from '@/components/views/SettingsView.vue';
 import ShopView from '@/components/views/ShopView.vue';
+import WorldInfoView from '@/components/views/WorldInfoView.vue';
+import { CONFIG_SUB_TABS, PAGES, type ConfigTabId, type PageId } from '@/components/shared/tab-definitions';
 import { pinia } from '@/pinia';
 import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
@@ -69,16 +90,8 @@ const visible = computed(() => settings.value.panelVisible);
 const system = computed(() => game.activeSystem);
 const accent = computed(() => system.value?.color ?? '#8b5cf6');
 
-type TabId = 'home' | 'shop' | 'inventory' | 'log' | 'settings';
-const activeTab = ref<TabId>('home');
-
-const tabs = computed(() => [
-  { id: 'home' as const, icon: 'fa-solid fa-house', label: t`首页` },
-  { id: 'shop' as const, icon: 'fa-solid fa-store', label: t`商店` },
-  { id: 'inventory' as const, icon: 'fa-solid fa-box-open', label: t`背包` },
-  { id: 'log' as const, icon: 'fa-solid fa-scroll', label: t`日志` },
-  { id: 'settings' as const, icon: 'fa-solid fa-gear', label: t`设置` },
-]);
+const activePage = ref<PageId>('home');
+const configSubTab = ref<ConfigTabId>('prompt');
 
 // -- 拖拽：手写 pointer 实现（不依赖 useDraggable，行为完全可控） --
 const panel = ref<HTMLElement | null>(null);

@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { rewardText } from '@/core/injector';
+import { rewardText } from '@/core/prompt-vars';
 import type { Task } from '@/type/game';
 
 defineProps<{

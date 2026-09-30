@@ -32,7 +32,7 @@
       <template v-if="game.activeTasks.length > 0">
         <GfTaskCard v-for="task in game.activeTasks" :key="task.id" :task="task" @abandon="abandon" />
       </template>
-      <div v-else class="gf-empty-small">{{ t`暂无任务，点下方按钮让系统发布一个。` }}</div>
+      <div v-else class="gf-empty-small">{{ t`暂无任务，点下方按钮让系统派发一批。` }}</div>
 
       <button
         class="gf-primary-btn"
@@ -40,7 +40,7 @@
         @click="issue"
       >
         <i :class="game.generating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bolt'"></i>
-        {{ game.generating ? t`正在连接系统…` : t`发布新任务` }}
+        {{ game.generating ? t`正在连接系统…` : t`让系统派发任务` }}
       </button>
 
       <details v-if="game.closedTasks.length > 0" class="gf-details">
@@ -93,8 +93,9 @@ function formatTime(time: number): string {
 
 async function issue(): Promise<void> {
   try {
-    const task = await game.issueTask();
-    toastr.success(t`新任务已发布：${task.title}`, t`金手指系统`);
+    const tasks = await game.issueTasks();
+    const titles = tasks.map(item => `《${item.title}》`).join('、');
+    toastr.success(t`系统派发了 ${tasks.length} 个新任务：${titles}`, t`金手指系统`);
   } catch (error) {
     console.error('[GoldenFinger] 发布任务失败', error);
     toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
