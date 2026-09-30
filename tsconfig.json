@@ -3,6 +3,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "outDir": "dist",
+<<<<<<< HEAD
     // 不设 baseUrl：baseUrl 会让裸导入（如 'pinia'）先按项目内路径解析，
     // 命中本仓库的 src/pinia.ts 而不是 node_modules 的 pinia 包，
     // 导致 import { defineStore } from 'pinia' 报 TS2305、store 实例类型退化为 any
@@ -10,6 +11,23 @@
     "paths": {
       "@sillytavern/*": ["./../../../../*"],
       "@/*": ["./src/*"]
+=======
+    "baseUrl": "src",
+    "types": [
+      "jquery",
+      "jqueryui",
+      "lodash",
+      "toastr",
+      "type-fest",
+    ],
+    "paths": {
+      "@sillytavern/*": [
+        "../../../../../*"
+      ],
+      "@/*": [
+        "./*"
+      ]
+>>>>>>> 4121a8d9abe908f3b0a6a37322b05eef37e5cadc
     },
     "moduleDetection": "auto",
     "moduleResolution": "bundler",
@@ -27,9 +45,23 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
+<<<<<<< HEAD
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
   "include": ["*.d.ts", "src/**/*.ts", "src/**/*.vue", "@types/**/*.ts"],
   "exclude": ["**/node_modules/**", "**/dist/**"]
+=======
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "*.d.ts",
+    "src/**/*.ts",
+    "../../../../**/*.js" // for intelligence
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+  ]
+>>>>>>> 4121a8d9abe908f3b0a6a37322b05eef37e5cadc
 }

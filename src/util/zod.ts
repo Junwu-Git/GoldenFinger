@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 import { z } from 'zod';
 
+=======
+>>>>>>> 4121a8d9abe908f3b0a6a37322b05eef37e5cadc
 export function validateInplace<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = parsePrettified(schema, data);
   return _.assign(data, result) as T;
