@@ -14,6 +14,7 @@ export function buildVars(system: SystemDef, state: GameState): Record<string, s
       : '（暂无任务，等待系统发布）';
   return {
     systemName: system.name,
+    shopName: system.shopName,
     persona: system.persona,
     level: levelText(system, state),
     currency: system.currencyName,

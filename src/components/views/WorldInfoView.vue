@@ -14,20 +14,17 @@
         <span>{{ t`生成时包含已激活的世界书条目` }}</span>
       </label>
       <div class="gf-setting-row">
-        <span class="gf-setting-label">{{ t`剧情上下文楼层数` }}</span>
-        <input v-model.number="settings.storyMessages" class="text_input gf-number" type="number" min="2" max="30" />
+        <span class="gf-setting-label">{{ t`剧情上下文模式` }}</span>
+        <select v-model="settings.contextMode" class="gf-setting-control">
+          <option value="rounds">{{ t`轮数（最近 N 轮）` }}</option>
+          <option value="visible_only">{{ t`可见消息（全部可见楼层）` }}</option>
+        </select>
       </div>
-      <div class="gf-setting-row">
-        <span class="gf-setting-label">{{ t`单条楼层截断（字）` }}</span>
-        <input
-          v-model.number="settings.storyMessageLength"
-          class="text_input gf-number"
-          type="number"
-          min="50"
-          max="600"
-        />
+      <div v-if="settings.contextMode === 'rounds'" class="gf-setting-row">
+        <span class="gf-setting-label">{{ t`轮数（每轮=用户+助手 2 层）` }}</span>
+        <input v-model.number="settings.contextRounds" class="text_input gf-number" type="number" min="1" max="30" />
       </div>
-      <div class="gf-setting-desc">{{ t`剧情上下文取最近若干层对话（倒序、剔除隐藏楼层）作为剧情摘要来源。` }}</div>
+      <div class="gf-setting-desc">{{ t`任务生成参考最近剧情的取景：可见消息=全部可见楼层，轮数=最近 N 轮（剔除隐藏楼层），不逐条截断。` }}</div>
     </GfSectionCard>
 
     <!-- 世界书控制：逐书 关闭/默认/强制，直接用酒馆已配置的书，不必手动重录 -->

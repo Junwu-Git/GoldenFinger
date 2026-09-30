@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SystemDef } from '@/type/game';
 
 /** 设置结构版本：字段结构破坏性变更时 +1 并在 settings store 里写迁移 */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 10;
 
 export const setting_field = 'golden_finger';
 
@@ -57,9 +57,14 @@ export type StoryFilterRule = z.infer<typeof StoryFilterRule>;
 /**
  * 默认模块（照 choice 的提示词模块体系重写，模块顺序即消息顺序）：
  * - 注入域：正文 AI 的系统状态播报；
- * - 生成域（choice 六段式）：系统定位 → 应答声明(assistant 预填) → 资料槽(system，同 choice 资料区为 system)
- *   → 信息边界/契约/思考框架(system) → 风格重申+生成请求(user) → 思维链预填(assistant)。相邻同 role 合并后 =
- *   [sys 定位][asst 应答][sys 状态+世界观+剧情+边界+契约+自检][user 风格+请求][asst 预填]。
+ * - 生成域（choice 布局）：系统定位(system) → 应答声明(assistant) → <reference>资料区(reference_open + persona_description +
+ *   world_info_before + char_description/char_personality/char_scenario + world_info_after，system marker 槽，整段不截断)
+ *   + reference_close</reference> → 当前状态(gen_state，system marker) → wi_depth_before → chat_history(按楼层展开为逐条真实
+ *   user/assistant 聊天消息，末条 assistant 包 <current_scene>，不逐条截断，按 contextMode/contextRounds 取可见楼层) → wi_depth_after
+ *   → 信息边界/契约/思考框架(system) → 生成请求(user，唯一，含任务风格) → 思维链预填(assistant)。
+ *   相邻同 role 合并、但 user 永不合并（同 choice：user 代表独立输入边界）——合并后 =
+ *   [sys 定位][asst 应答][sys <reference>persona+世界书+角色卡</reference>+状态+深度]…聊天楼层(user/assistant)…[sys 边界+契约+自检][user 请求][asst 预填]。
+ * - 商店货架生成另有 DEFAULT_SHOP_MODULES（独立 `shopPromptModules` 字段），复用同一套参考/聊天槽位，配商店专用 定位/契约/思考/请求。
  * 可用变量：{{user}}/{{persona}} 交由酒馆 substituteParams 与运行时分别填充，其余为系统状态。
  */
 export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
@@ -146,6 +151,79 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
       '收到。本轮按系统规则执行：结合世界观与最近剧情，发布恰好 {{taskCount}} 个贴合「{{systemName}}」风格的任务；先输出 <thinking> 自检，再输出 JSON 数组，不输出任何多余内容。',
   },
   {
+    id: 'reference_open',
+    name: '资料区开始',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: '<!-- 故事背景资料 -->\n<reference>',
+  },
+  {
+    id: 'persona_description',
+    name: 'Persona Description',
+    scope: 'generate',
+    // 生成路径中忽略 role：渲染用户主角 persona（power_user.persona_description，包 <user_persona>），内容由运行时填充
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'world_info_before',
+    name: 'World Info (before)',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_description',
+    name: 'Character Description',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_personality',
+    name: 'Character Personality',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_scenario',
+    name: 'Character Scenario',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'world_info_after',
+    name: 'World Info (after)',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'reference_close',
+    name: '资料区结束',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: '</reference>',
+  },
+  {
     id: 'gen_state',
     name: '当前状态',
     scope: 'generate',
@@ -155,8 +233,8 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     content: '',
   },
   {
-    id: 'gen_world',
-    name: '世界观背景',
+    id: 'wi_depth_before',
+    name: '世界书深度（历史前）',
     scope: 'generate',
     role: 'system',
     marker: true,
@@ -164,8 +242,18 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     content: '',
   },
   {
-    id: 'gen_story',
-    name: '最近剧情',
+    id: 'chat_history',
+    name: 'Chat History',
+    scope: 'generate',
+    // 生成路径中本字段忽略：chat_history 会按楼层展开为逐条真实 user/assistant 聊天消息（同 choice）
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'wi_depth_after',
+    name: '世界书深度（历史后）',
     scope: 'generate',
     role: 'system',
     marker: true,
@@ -234,15 +322,6 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     ].join('\n'),
   },
   {
-    id: 'gen_style',
-    name: '任务风格重申',
-    scope: 'generate',
-    role: 'user',
-    marker: false,
-    enabled: true,
-    content: ['【任务风格（必须严格遵守）】', '{{taskHint}}'].join('\n'),
-  },
-  {
     id: 'gen_request',
     name: '生成请求',
     scope: 'generate',
@@ -250,7 +329,10 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     marker: false,
     enabled: true,
     content: [
-      '【本轮任务：发布新任务】以「{{systemName}}」的身份与设定，结合上方当前状态、世界观与最近剧情（以 <current_scene> 标记的最新进展为准），发布恰好 {{taskCount}} 个新任务，组成一批任务清单。',
+      '【任务风格（必须严格遵守）】',
+      '{{taskHint}}',
+      '',
+      '【本轮任务：发布新任务】以「{{systemName}}」的身份与设定，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），发布恰好 {{taskCount}} 个新任务，组成一批任务清单。',
       '数量硬约束：恰好 {{taskCount}} 个，一个不多、一个不少；目标彼此不重叠、难度有梯度。任务要与当前情境有机衔接、宿主接了就能立刻展开；宁可贴合「{{systemName}}」的风格，也不要发布与该风格无关的泛泛任务。',
       '契约、信息边界与难度标尺见系统消息；先在 <thinking> 内完成自检，再输出 JSON 数组，数组之后一字不写。',
     ].join('\n\n'),
@@ -266,6 +348,204 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
   },
 ];
 
+/** 商店货架生成默认模块（choice 式，与任务生成共用参考/聊天槽位；商品专用 定位/契约/思考/请求） */
+export const DEFAULT_SHOP_MODULES: PromptModule[] = [
+  {
+    id: 'shop_persona',
+    name: '系统定位',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: [
+      '你在一部互动小说中扮演绑定于主角{{user}}的「金手指」——「{{systemName}}」，并负责运营它的内置商店「{{shopName}}」。',
+      '系统人格与播报风格：',
+      '{{persona}}',
+      '这家商店出售的货品必须贴合「{{shopName}}」的气质与世界观，标价使用货币「{{currency}}」；货品能在剧情中实际派上用场（消耗品、情报、装备、机缘、服务皆可）。',
+      '输出纪律：只输出商品 JSON 数组，除此之外一个字都不写。',
+    ].join('\n\n'),
+  },
+  {
+    id: 'shop_ack',
+    name: '应答声明',
+    scope: 'generate',
+    role: 'assistant',
+    marker: false,
+    enabled: true,
+    content: '收到，为「{{shopName}}」上一批贴合其气质的新货；只输出 JSON 数组，不输出任何多余内容。',
+  },
+  {
+    id: 'reference_open',
+    name: '资料区开始',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: '<!-- 故事背景资料 -->\n<reference>',
+  },
+  {
+    id: 'persona_description',
+    name: 'Persona Description',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'world_info_before',
+    name: 'World Info (before)',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_description',
+    name: 'Character Description',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_personality',
+    name: 'Character Personality',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'char_scenario',
+    name: 'Character Scenario',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'world_info_after',
+    name: 'World Info (after)',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'reference_close',
+    name: '资料区结束',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: '</reference>',
+  },
+  {
+    id: 'gen_state',
+    name: '当前状态',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'wi_depth_before',
+    name: '世界书深度（历史前）',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'chat_history',
+    name: 'Chat History',
+    scope: 'generate',
+    // 本字段忽略：chat_history 按楼层展开为逐条真实 user/assistant 聊天消息
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'wi_depth_after',
+    name: '世界书深度（历史后）',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
+    id: 'shop_contract',
+    name: '商品 JSON 契约',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: [
+      '【商品 JSON 契约（硬约束）】把一批商店商品输出为严格的 JSON 数组：不要输出任何解释性文字、前后缀或代码块标记。每个元素字段如下：',
+      '{',
+      '  "name": "商品名，8字以内，有画面感",',
+      '  "description": "商品描述：它是什么、有何妙用，40字以内",',
+      '  "price": 正整数价格,',
+      '  "stock": 数量或 null(不限量),',
+      '  "rarity": 1到3的整数',
+      '}',
+      '生成要求：',
+      '- 一批正好 10 件，一件都不能少；rarity 分布大致为 普通(1) 5 件、稀有(2) 3~4 件、传说(3) 1~2 件。',
+      '- 价格带：普通 10~50、稀有 50~200、传说 200~1000；再结合宿主当前的等级与持有货币微调，让「攒一攒够得着传说」有盼头。',
+      '- 商品必须契合店铺气质与世界观，且能在剧情中实际派上用场；10 件之间品类尽量错开，不要凑数重复。',
+    ].join('\n'),
+  },
+  {
+    id: 'shop_thinking',
+    name: '思考框架',
+    scope: 'generate',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: [
+      '正式输出前，把思考写出来，全部裹在 <thinking> 标签里。逐条作答，每条一两句即可：',
+      '1. 最近剧情停在哪？宿主的等级、持有货币与当前处境是什么？从剧情里挑几个能直接落成商店货品的钩子。',
+      '2. 这批 10 件货品各指向什么品类、切中「{{shopName}}」气质的哪一面？价位/稀有度梯度是否拉开、攒一攒够得着传说？',
+      '3. 合规自检：是否正好 10 件？rarity 分布是否接近 普通5/稀有3~4/传说1~2？价格带与字段是否完整？货币是否用了「{{currency}}」？',
+      '核对无误即输出 JSON 数组；<thinking> 里不要出现 JSON 示例或方括号。',
+    ].join('\n'),
+  },
+  {
+    id: 'shop_request',
+    name: '生成请求',
+    scope: 'generate',
+    role: 'user',
+    marker: false,
+    enabled: true,
+    content: [
+      '【风格（必须严格遵守）】与「{{shopName}}」气质、世界观一致，贴合当前剧情。',
+      '',
+      '【本轮请求】以「{{shopName}}」的口吻，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），上一批正好 10 件的新货。',
+      '数量硬约束：正好 10 件，一件都不能少；品类尽量错开、贴合世界观；宁可贴合店铺气质，也不要上泛泛的普通商品。',
+      '契约见系统消息；先在 <thinking> 内完成自检，再输出 JSON 数组，数组之后一字不写。',
+    ].join('\n\n'),
+  },
+  {
+    id: 'shop_prefill',
+    name: '思维链预填',
+    scope: 'generate',
+    role: 'assistant',
+    marker: false,
+    enabled: true,
+    content: '收到，开始梳理货架方向。\n\n<thinking>\n',
+  },
+];
+
 /** 分域默认模块（编辑器分区渲染 / 运行时回落 / 迁移补齐共用；使用点 structuredClone 防共享引用） */
 export const DEFAULT_INJECT_MODULES = DEFAULT_PROMPT_MODULES.filter(module => module.scope === 'inject');
 export const DEFAULT_GENERATE_MODULES = DEFAULT_PROMPT_MODULES.filter(module => module.scope === 'generate');
@@ -276,9 +556,7 @@ export const Settings = z
     schema_version: z.number().default(SCHEMA_VERSION),
     /** 总开关：关闭后停止提示词注入（面板仍可查看与手动结算） */
     enabled: z.boolean().default(true),
-    /** 注入位置：in_chat = 对话末尾按深度插入（推荐）；in_prompt = 主提示词区 */
-    injectionPosition: z.enum(['in_chat', 'in_prompt']).default('in_chat'),
-    /** in_chat 模式下距对话末尾的深度 */
+    /** in_chat 模式下距对话末尾的深度（注入位置恒为对话内 IN_CHAT） */
     injectionDepth: z.number().int().min(0).max(20).default(4).catch(4),
     /** 每 N 条 AI 回复自动发布一批新任务 */
     autoIssue: z.boolean().default(true),
@@ -287,10 +565,10 @@ export const Settings = z
     removeMarkers: z.boolean().default(true),
     /** 任务生成请求的 assistant 预填（应答声明 + 思维链预填）；关闭后这些模块降级为 system 消息 */
     prefillEnabled: z.boolean().default(true),
-    /** 任务生成时参考最近多少条消息 */
-    storyMessages: z.number().int().min(2).max(30).default(10).catch(10),
-    /** 任务生成时单条消息的最大截取长度 */
-    storyMessageLength: z.number().int().min(50).max(600).default(160).catch(160),
+    /** 任务生成参考剧情的上下文模式（choice 式）：visible_only = 全部可见楼层；rounds = 最近 N 轮（每轮=用户+助手 2 层） */
+    contextMode: z.enum(['visible_only', 'rounds']).default('rounds'),
+    /** rounds 模式下的轮数（每轮 2 层；默认 5 轮≈10 层，对齐旧 storyMessages=10） */
+    contextRounds: z.number().int().min(1).max(30).default(5).catch(5),
     /** 生成任务/商品时读取角色卡核心字段 */
     useCharCard: z.boolean().default(true),
     /** 生成任务/商品时读取已激活的世界书条目 */
@@ -305,6 +583,8 @@ export const Settings = z
     api: ApiSettings.prefault({}),
     /** 注入提示词模板（可编辑；default 用工厂防共享引用被就地污染） */
     promptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_PROMPT_MODULES)),
+    /** 商店货架生成模板（choice 式，独立于任务生成模板；可编辑） */
+    shopPromptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_SHOP_MODULES)),
     customSystems: z.array(SystemDef).default([]),
     /** 面板窗口位置（-1 表示未初始化，首开时停靠右上） */
     panelPos: z.object({ x: z.number(), y: z.number() }).default({ x: -1, y: -1 }).catch({ x: -1, y: -1 }),

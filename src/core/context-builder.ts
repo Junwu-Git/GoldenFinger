@@ -1,4 +1,5 @@
-import { chat_metadata } from '@sillytavern/script';
+import { chat_metadata, substituteParams } from '@sillytavern/script';
+import { power_user } from '@sillytavern/scripts/power-user';
 import {
   getWorldInfoPrompt,
   loadWorldInfo,
@@ -15,84 +16,82 @@ type LoadedWorldBook = {
 
 /** 世界书取数预算：沿 choice 的放大值——独立生成请求不吃正文上下文预算，放大才能装下大条目 */
 const WI_MAX_CONTEXT = 128_000;
-/** 世界书文本总预算（超出截断，防生成提示词爆炸） */
-const WI_TOTAL_CLIP = 3_000;
-const CHAR_DESC_CLIP = 400;
-const CHAR_FIELD_CLIP = 200;
 
-function clip(text: unknown, max: number): string {
-  const trimmed = String(text ?? '').trim();
-  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
-}
+/** 深度条目分界：depth ≤ 此值注入 wi_depth_after（浅、贴近生成点），> 此值注入 wi_depth_before（深、背景），同 choice */
+const WI_DEPTH_AFTER_MAXDEPTH = 2;
 
-/**
- * 组装「世界观背景」块：角色卡核心字段 + 酒馆原生激活的世界书条目。
- * 供任务/商品生成提示词使用，让产出贴合当前卡与世界书，而不是只看最近几条聊天。
- * 世界书直接调 getWorldInfoPrompt（关键字/概率/深度/预算全由酒馆管线处理，同 choice 的 buildWI）；
- * 两个来源相互独立，读不到就跳过，不影响生成主链路。
- */
-export async function buildWorldContext(settings: Settings): Promise<string> {
-  const context = window.SillyTavern?.getContext?.();
-  const parts: string[] = [];
-
-  if (settings.useCharCard) {
-    const card = getCharCard(context);
-    if (card) {
-      parts.push(`【角色卡设定】\n${card}`);
-    }
-  }
-
-  if (settings.useWorldInfo) {
-    try {
-      const worldInfo = await getWorldInfoBlock(context, settings);
-      if (worldInfo) {
-        parts.push(`【世界书设定】\n${worldInfo}`);
-      }
-    } catch (error) {
-      console.warn('[GoldenFinger] 读取世界书失败，已跳过', error);
-    }
-  }
-
-  return clip(parts.join('\n\n'), WI_TOTAL_CLIP + CHAR_DESC_CLIP + CHAR_FIELD_CLIP * 2);
-}
-
-/** 角色卡核心字段；群聊没有单一角色卡，返回 null */
-function getCharCard(context: any): string | null {
-  if (!context || context.groupId != null) {
+/** 用户主角 persona（choice 的 persona_description 槽，包 <user_persona>，整段发送不截断）；无 persona 返回 null */
+export function buildPersonaContext(): string | null {
+  const persona = power_user?.persona_description;
+  if (!persona) {
     return null;
+  }
+  return `<user_persona>\n以下是用户本人（用户=主角=user）的人物设定：\n${substituteParams(String(persona))}\n</user_persona>`;
+}
+
+export type CharSlots = { description: string | null; personality: string | null; scenario: string | null };
+
+/** 角色卡三个槽（choice 的 char_description/char_personality/char_scenario），整段发送不截断；respect useCharCard */
+export function buildCharSlots(settings: Settings): CharSlots {
+  const empty: CharSlots = { description: null, personality: null, scenario: null };
+  if (!settings.useCharCard) {
+    return empty;
+  }
+  const context = window.SillyTavern?.getContext?.();
+  if (!context || context.groupId != null) {
+    return empty;
   }
   const character = context.characters?.[context.characterId];
   if (!character) {
-    return null;
+    return empty;
   }
-  const parts: string[] = [];
-  const description = character.data?.description ?? character.description;
-  const personality = character.data?.personality ?? character.personality;
-  const scenario = character.data?.scenario ?? character.scenario;
-  if (description) {
-    parts.push(`描述：${clip(description, CHAR_DESC_CLIP)}`);
+  const trim = (value: unknown): string | null => {
+    const s = String(value ?? '').trim();
+    return s || null;
+  };
+  return {
+    description: trim(character.data?.description ?? character.description),
+    personality: trim(character.data?.personality ?? character.personality),
+    scenario: trim(character.data?.scenario ?? character.scenario),
+  };
+}
+
+export type WorldInfoSlots = {
+  before: string;
+  after: string;
+  depthBefore: string;
+  depthAfter: string;
+};
+
+const EMPTY_WORLD_SLOTS: WorldInfoSlots = { before: '', after: '', depthBefore: '', depthAfter: '' };
+
+/** 世界书四个槽（choice 的 world_info_before/world_info_after/wi_depth_before/wi_depth_after），整段发送不截断；respect useWorldInfo */
+export async function buildWorldInfoSlots(settings: Settings): Promise<WorldInfoSlots> {
+  if (!settings.useWorldInfo) {
+    return { ...EMPTY_WORLD_SLOTS };
   }
-  if (personality) {
-    parts.push(`性格：${clip(personality, CHAR_FIELD_CLIP)}`);
+  try {
+    const context = window.SillyTavern?.getContext?.();
+    return await getWorldInfoBlock(context, settings);
+  } catch (error) {
+    console.warn('[GoldenFinger] 读取世界书失败，已跳过', error);
+    return { ...EMPTY_WORLD_SLOTS };
   }
-  if (scenario) {
-    parts.push(`场景：${clip(scenario, CHAR_FIELD_CLIP)}`);
-  }
-  return parts.length > 0 ? parts.join('\n') : null;
 }
 
 /**
- * 组装「世界书设定」块：
+ * 世界书设定按 choice 槽位分桶：
  * - 无书层覆盖（worldBookOverrides 全 default/空）→ 走酒馆原生 getWorldInfoPrompt 扫描（零行为变化）；
- * - 任一 off/force 覆盖 → 手动组装参与书集：激活源中未 off 的书 + 所有 force 的书，
- *   default 书跟随酒馆的 entry.disable，force 书无视 disable。手动组装不读写酒馆世界书缓存，
- *   也就不会影响正文主生成（choice 用缓存变异做书层控制，本扩展避免那个副作用）。
+ * - 任一 off/force 覆盖 → 手动组装参与书集（激活源中未 off 的书 + 所有 force 的书，default 书跟随 entry.disable、
+ *   force 书无视 disable）。手动组装不读写酒馆世界书缓存，也就不会影响正文主生成
+ *   （choice 用缓存变异做书层控制，本扩展避免那个副作用）。
  */
-async function getWorldInfoBlock(context: any, settings: Settings): Promise<string | null> {
+async function getWorldInfoBlock(context: any, settings: Settings): Promise<WorldInfoSlots> {
   const overrides = settings.worldBookOverrides ?? {};
   const hasOverride = Object.values(overrides).some(mode => mode === 'off' || mode === 'force');
   if (hasOverride) {
-    return await getWorldInfoOverridden(overrides);
+    const manual = await getWorldInfoOverridden(overrides);
+    return { before: manual ?? '', after: '', depthBefore: '', depthAfter: '' };
   }
   return await getWorldInfoNative(context);
 }
@@ -137,8 +136,8 @@ async function getWorldInfoOverridden(overrides: Record<string, WorldBookMode>):
   return blocks.length > 0 ? blocks.join('\n\n') : null;
 }
 
-/** 调酒馆原生世界书扫描管线，聚合插入型条目（before/after/贴近生成点的浅深度/作者注释前后） */
-async function getWorldInfoNative(context: any): Promise<string | null> {
+/** 调酒馆原生世界书扫描管线，按 choice 槽位分桶：before=before+anBefore、after=after+anAfter、depthBefore=depth>2、depthAfter=depth≤2 */
+async function getWorldInfoNative(context: any): Promise<WorldInfoSlots> {
   const chat = (context?.chat ?? []) as StChatMessage[];
   // 与主生成一致：倒序（最新在前）、剔除隐藏楼层
   const chatStrings = chat
@@ -146,7 +145,7 @@ async function getWorldInfoNative(context: any): Promise<string | null> {
     .map(message => String(message.mes ?? ''))
     .reverse();
   if (chatStrings.length === 0) {
-    return null;
+    return { ...EMPTY_WORLD_SLOTS };
   }
 
   const character = context?.groupId == null ? context?.characters?.[context.characterId] : undefined;
@@ -160,15 +159,25 @@ async function getWorldInfoNative(context: any): Promise<string | null> {
     creatorNotes: '',
   });
 
-  // 深度条目：≤2 层的贴近生成点，是「当前情境」的一部分；更深的属于远背景，不重复带入
-  const depthContents = (result.worldInfoDepth ?? [])
-    .filter((group: any) => (group.depth ?? 99) <= 2)
-    .flatMap((group: any) => (group.entries ?? []).map((entry: any) => String(entry.content ?? '')));
-
-  const blocks = [result.worldInfoBefore, result.worldInfoAfter, ...depthContents, result.anBefore, result.anAfter]
-    .map(block => String(block ?? '').trim())
-    .filter(Boolean);
-  return blocks.length > 0 ? blocks.join('\n\n') : null;
+  const join = (values: unknown[]): string =>
+    values
+      .map(value => String(value ?? '').trim())
+      .filter(Boolean)
+      .join('\n\n');
+  const depth = (maxDepth: number): string => {
+    const groups = (result.worldInfoDepth ?? []).filter((group: any) => (group.depth ?? 99) > maxDepth);
+    return join(groups.flatMap((group: any) => (group.entries ?? []).map((entry: any) => String(entry.content ?? ''))));
+  };
+  return {
+    before: join([result.worldInfoBefore, result.anBefore]),
+    after: join([result.worldInfoAfter, result.anAfter]),
+    depthBefore: depth(WI_DEPTH_AFTER_MAXDEPTH),
+    depthAfter: join(
+      (result.worldInfoDepth ?? [])
+        .filter((group: any) => (group.depth ?? 99) <= WI_DEPTH_AFTER_MAXDEPTH)
+        .flatMap((group: any) => (group.entries ?? []).map((entry: any) => String(entry.content ?? ''))),
+    ),
+  };
 }
 
 export type WorldBookSource = 'global' | 'character' | 'chat';

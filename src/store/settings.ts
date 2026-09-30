@@ -2,7 +2,7 @@ import { saveSettingsDebounced } from '@sillytavern/script';
 import { extension_settings } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { DEFAULT_PROMPT_MODULES, SCHEMA_VERSION, Settings, setting_field } from '@/type/settings';
+import { DEFAULT_PROMPT_MODULES, DEFAULT_SHOP_MODULES, SCHEMA_VERSION, Settings, setting_field } from '@/type/settings';
 import { validateInplace } from '@/util/zod';
 
 /**
@@ -14,7 +14,51 @@ import { validateInplace } from '@/util/zod';
  *   思维链会加长输出，回复上限提到 2500 防截断。
  * - v4 → v5：资料槽（gen_state/gen_world/gen_story）role 改为 system——对齐 choice「资料区为 system、user 只承载指令」。
  *   v4 老档这三个槽还是 user（沿老主路「只取最后 user 当 prompt」的旧设计），按 id 强制刷新 role、其余保留。
+ * - v5 → v6：剧情上下文改为 choice 式两模式（visible_only/rounds）。删除单条截断 storyMessageLength；
+ *   旧 storyMessages（楼层数 N）迁移为 contextMode='rounds' + contextRounds=round(N/2)（每轮=用户+助手 2 层）。
+ * - v6 → v7：剧情上下文之后的生成域默认模块按 choice 布局重建（任务风格并入 gen_request，删除单 user 冗余）。
+ * - v7 → v8：生成域资料区逐字复刻 choice 槽位——用 persona_description/world_info_before|after/char_description|personality|scenario/
+ *   wi_depth_before|after/chat_history/reference_open|close 取代过渡的 gen_char、gen_world、gen_ref_open/close、gen_story。
+ * - v8 → v9：商店货架生成接入模块系统——新增独立 shopPromptModules（默认 DEFAULT_SHOP_MODULES）。
+ * - v9 → v10：移除注入位置选项（injectionPosition），注入恒为对话内（IN_CHAT）。
+ * 生成域重建只重排生成域，注入域模块原样保留；custom_* 与未知 id 的生成模块保留在末尾。
  */
+/** 生成域已移除的内置模块 id：迁移时从用户存档中丢弃（并入新槽位/模块） */
+const REMOVED_GENERATE_IDS = new Set([
+  'gen_char',
+  'gen_world',
+  'gen_ref_open',
+  'gen_ref_close',
+  'gen_story',
+  'gen_style',
+]);
+
+/** 按当前 DEFAULT_PROMPT_MODULES 重建生成域默认模块（幂等）：保留 enabled，丢弃 REMOVED_GENERATE_IDS 与旧内置，
+ *  保留 custom 前缀/未知 id，注入域原样保留。 */
+function rebuildGenerateDefaults(migrated: Record<string, unknown>): void {
+  const modules = Array.isArray(migrated.promptModules) ? (migrated.promptModules as unknown[]) : [];
+  const genDefs = DEFAULT_PROMPT_MODULES.filter(def => def.scope === 'generate');
+  const genIds = new Set(genDefs.map(def => def.id));
+  const injectModules = modules.filter(mod => (mod as { scope?: string })?.scope !== 'generate');
+  const oldGenModules = modules.filter(mod => (mod as { scope?: string })?.scope === 'generate');
+  const rebuiltGen: unknown[] = [];
+  for (const def of genDefs) {
+    const old = oldGenModules.find(mod => (mod as { id?: string })?.id === def.id);
+    rebuiltGen.push(
+      old
+        ? { ...structuredClone(def), enabled: (old as { enabled?: boolean }).enabled !== false }
+        : structuredClone(def),
+    );
+  }
+  for (const mod of oldGenModules) {
+    const id = (mod as { id?: string })?.id;
+    if (!id || genIds.has(id) || REMOVED_GENERATE_IDS.has(id)) {
+      continue; // 已按默认重建；或属于被移除的内置（并入新槽位）
+    }
+    rebuiltGen.push(mod); // custom_*/未知 id 保留
+  }
+  migrated.promptModules = [...injectModules, ...rebuiltGen];
+}
 function migrateSettings(raw: unknown): unknown {
   const data = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const version = typeof data.schema_version === 'number' ? data.schema_version : 0;
@@ -79,6 +123,35 @@ function migrateSettings(raw: unknown): unknown {
       const id = (module as { id?: string })?.id;
       return id === 'gen_state' || id === 'gen_world' || id === 'gen_story' ? { ...module, role: 'system' } : module;
     });
+  }
+  if (version < 6) {
+    // 剧情上下文改为 choice 式两模式：删除单条截断 storyMessageLength；
+    // 旧 storyMessages（楼层数 N）→ contextMode='rounds' + contextRounds=round(N/2)，保留用户改过的取景习惯
+    delete migrated.storyMessageLength;
+    const oldCount = (migrated as Record<string, unknown>).storyMessages;
+    if (typeof oldCount === 'number') {
+      migrated.contextMode = 'rounds';
+      migrated.contextRounds = Math.max(1, Math.min(30, Math.round(oldCount / 2)));
+    }
+    delete migrated.storyMessages;
+  }
+  if (version < 7) {
+    // 生成域默认模块按当前 choice 布局重建（去旧槽位、任务风格并入 gen_request）
+    rebuildGenerateDefaults(migrated);
+  }
+  if (version < 8) {
+    // 收敛 v7 曾引入的过渡槽位（gen_char/gen_world/gen_ref_*/gen_story/gen_style）到 choice 槽位
+    rebuildGenerateDefaults(migrated);
+  }
+  if (version < 9) {
+    // 商店货架生成接入模块系统：新增独立 shopPromptModules（默认 DEFAULT_SHOP_MODULES）
+    if (!Array.isArray(migrated.shopPromptModules)) {
+      migrated.shopPromptModules = structuredClone(DEFAULT_SHOP_MODULES);
+    }
+  }
+  if (version < 10) {
+    // 移除注入位置选项：注入恒为对话内（IN_CHAT），清理旧字段（zod strip 亦会吞掉）
+    delete migrated.injectionPosition;
   }
   return migrated;
 }
