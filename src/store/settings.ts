@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { saveSettingsDebounced } from '@sillytavern/script';
 import { extension_settings } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
@@ -158,16 +159,35 @@ function migrateSettings(raw: unknown): unknown {
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref(validateInplace(Settings, migrateSettings(_.get(extension_settings, setting_field))));
+=======
+import { setting_field, Settings } from '@/type/settings';
+import { validateInplace } from '@/util/zod';
+import { saveSettingsDebounced } from '@sillytavern/script';
+import { extension_settings } from '@sillytavern/scripts/extensions';
+
+export const useSettingsStore = defineStore('settings', () => {
+  const settings = ref(validateInplace(Settings, _.get(extension_settings, setting_field)));
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
 
   watch(
     settings,
     new_settings => {
+<<<<<<< HEAD
       new_settings.schema_version = SCHEMA_VERSION;
       _.set(extension_settings, setting_field, klona(new_settings));
+=======
+      _.set(extension_settings, setting_field, klona(new_settings)); // 用 klona 克隆对象从而去除 proxy 层
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
       saveSettingsDebounced();
     },
     { deep: true },
   );
+<<<<<<< HEAD
 
   return { settings };
+=======
+  return {
+    settings,
+  };
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
 });

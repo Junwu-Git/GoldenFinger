@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "（系统没有留下描述）": "(The system left no description)",
   "「${0}」上了一批新货（第${1}批）": "\"${0}\" restocked a new shelf (batch ${1})",
   "「${0}」已绑定到本聊天！": "\"${0}\" has been bound to this chat!",
@@ -199,4 +200,9 @@
   "提示词、世界书、正则、API 配置等已移到游戏面板的「配置」标签页。": "Prompts, world info, regex and API config have moved to the \"Config\" tab of the game panel.",
   "API 设置已保存": "API settings saved",
   "Lv.${0}": "Lv.${0}"
+=======
+  "插件示例": "Plugin Example",
+  "示例按钮": "Example Button",
+  "示例开关": "Example Switch"
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
 }

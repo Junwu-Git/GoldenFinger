@@ -1,10 +1,17 @@
 {
+<<<<<<< HEAD
   "name": "golden-finger",
+=======
+  "name": "<插件名称>",
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
   "version": "1.0.0",
   "scripts": {
     "build": "vite build",
     "watch": "vite build --watch --mode development",
+<<<<<<< HEAD
     "typecheck": "vue-tsc --noEmit",
+=======
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,scss,html,vue}\"",
     "lint": "eslint",
     "lint:fix": "eslint --fix"
@@ -50,7 +57,10 @@
     "vue-eslint-parser": "^10.4.1",
     "vue-loader": "^17.4.2",
     "vue-style-loader": "^4.1.3",
+<<<<<<< HEAD
     "vue-tsc": "^3.3.11",
+=======
+>>>>>>> ef276773b7d94dbf5add0a84e36d55ee51298e17
     "yaml": "^2.9.1"
   },
   "dependencies": {
