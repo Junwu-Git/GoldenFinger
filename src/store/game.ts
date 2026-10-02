@@ -6,7 +6,15 @@ import { generateTasksViaApi, adjudicateTasks } from '@/core/task-generator';
 import { generateShopShelf } from '@/core/shop-generator';
 import { useSettingsStore } from '@/store/settings';
 import { findSystem } from '@/systems/builtin';
-import { defaultEffect, GameState, expToNext, type LogKind, type SystemDef, type Task, type TaskStatus } from '@/type/game';
+import {
+  defaultEffect,
+  GameState,
+  expToNext,
+  type LogKind,
+  type SystemDef,
+  type Task,
+  type TaskStatus,
+} from '@/type/game';
 import { validateInplace } from '@/util/zod';
 
 /** 金手指游玩状态在聊天元数据中的字段名 */
@@ -318,7 +326,12 @@ export const useGameStore = defineStore('golden_finger_game', () => {
       owned.count += 1;
     } else {
       // 商品效果随购买一并入包，供背包「使用」（effect=none 的纯收藏品则不可用）
-      state.value.inventory.push({ name: item.name, description: item.description, count: 1, effect: { ...item.effect } });
+      state.value.inventory.push({
+        name: item.name,
+        description: item.description,
+        count: 1,
+        effect: { ...item.effect },
+      });
     }
     log('reward', t`购入「${item.name}」，花费 ${item.price} ${state.value.currencyName}`);
     toastr.success(t`已购入「${item.name}」`, t`金手指系统`);

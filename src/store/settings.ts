@@ -2,7 +2,14 @@ import { saveSettingsDebounced } from '@sillytavern/script';
 import { extension_settings } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { DEFAULT_GENERATE_MODULES, DEFAULT_PROMPT_MODULES, DEFAULT_SHOP_MODULES, SCHEMA_VERSION, Settings, setting_field } from '@/type/settings';
+import {
+  DEFAULT_GENERATE_MODULES,
+  DEFAULT_PROMPT_MODULES,
+  DEFAULT_SHOP_MODULES,
+  SCHEMA_VERSION,
+  Settings,
+  setting_field,
+} from '@/type/settings';
 import { validateInplace } from '@/util/zod';
 
 /**

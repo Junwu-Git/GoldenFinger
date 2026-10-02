@@ -23,9 +23,21 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       '一座烟火气十足的人间城镇：茶楼酒肆、庙会集市、邻里寒暄，处处是可以打卡的日常风景。这座城市有自己的晨钟暮鼓、节令集市与老故事，坚持之人终会被这座城市记住。',
     goal: '把每一件寻常小事都坚持成传奇，成为全城家喻户晓的「从不缺席」之人，用日复一日的坚持撬动看似平凡的生活。',
     skills: [
-      { name: '到钟即成', description: '一旦定下每日要完成的那件日常，就不容手头杂事冲散它：你总能在当天空出练功/打卡的一刻。', unlockLevel: 1 },
-      { name: '风雨无阻', description: '越是恶劣的处境，越能借「坚持」稳住心气，连身边人也会被你这股定力带动。', unlockLevel: 3 },
-      { name: '鲜彩在场', description: '连续打卡的光辉成为一种气韵：当众完成坚持事项时，气氛会自然倾向你，机会偏爱坚持的人。', unlockLevel: 5 },
+      {
+        name: '到钟即成',
+        description: '一旦定下每日要完成的那件日常，就不容手头杂事冲散它：你总能在当天空出练功/打卡的一刻。',
+        unlockLevel: 1,
+      },
+      {
+        name: '风雨无阻',
+        description: '越是恶劣的处境，越能借「坚持」稳住心气，连身边人也会被你这股定力带动。',
+        unlockLevel: 3,
+      },
+      {
+        name: '鲜彩在场',
+        description: '连续打卡的光辉成为一种气韵：当众完成坚持事项时，气氛会自然倾向你，机会偏爱坚持的人。',
+        unlockLevel: 5,
+      },
     ],
     levelNames: ['萌新签手', '签到学徒', '打卡达人', '签到宗师', '永不缺席'],
     maxActiveTasks: 2,
@@ -48,8 +60,16 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       '天元大陆，灵气昌盛，万族林立：仙门宗派、洞天福地、上古遗迹、凶险禁地层层铺开。凡人与修士同世而居，凡人望仙，修士问道，因果与机缘在这片大陆上处处埋线。',
     goal: '沿着修行之路步步攀升，从炼气入门到问鼎飞升，突破境界、集齐机缘，最终证道长生，在万族纷争中站稳自己的道途。',
     skills: [
-      { name: '吐纳入道', description: '灵息随心意运转：遇险时可借调息稳住心神，于危机中保存一线清明。', unlockLevel: 1 },
-      { name: '识灵之眼', description: '直觉感应灵物与灵气的浓淡，辨出洞府、宝材、凶煞之地的大致所在。', unlockLevel: 2 },
+      {
+        name: '吐纳入道',
+        description: '灵息随心意运转：遇险时可借调息稳住心神，于危机中保存一线清明。',
+        unlockLevel: 1,
+      },
+      {
+        name: '识灵之眼',
+        description: '直觉感应灵物与灵气的浓淡，辨出洞府、宝材、凶煞之地的大致所在。',
+        unlockLevel: 2,
+      },
       { name: '御风而行', description: '踏风飞遁短程，跨越常人难及的险路与距离。', unlockLevel: 3 },
       { name: '天元神识', description: '以神识感知方圆，查探暗处异动与潜藏杀机。', unlockLevel: 5 },
       { name: '劫雷淬体', description: '破境引雷入体淬炼，风险与增益并存，专破体魄瓶颈。', unlockLevel: 7 },
@@ -76,10 +96,26 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       '命运织网横贯无数平行世界：同一座城，在无数分岔里生出无数个结局。有人在岔路口停下，有人反复重来。选择系统站在网格之外冷眼旁观——每个岔路口都通向截然不同的世界线。',
     goal: '不再被动卷入命运的分岔，而是主动执棋：在一次次抉择里累积筹码与见识，最终成为能改写自身命运线、甚至撬动整张命运织网的人。',
     skills: [
-      { name: '命运直觉', description: '站在岔路口时，你隐约能嗅到两种走向各自的代价与滋味，不至于两眼一抹黑。', unlockLevel: 1 },
-      { name: '势利之眼', description: '能更冷静地掂量「哪条抉择与当前处境更有利」，看清眼前的势与利。', unlockLevel: 2 },
-      { name: '因果回响', description: '旧的抉择会留下回响：当走向某个似曾相识的分岔时，你会记起相近结局的余韵。', unlockLevel: 3 },
-      { name: '执棋之手', description: '在紧要关头，你能从局中抽身半步，改写一次原本注定不利的命运走向。', unlockLevel: 5 },
+      {
+        name: '命运直觉',
+        description: '站在岔路口时，你隐约能嗅到两种走向各自的代价与滋味，不至于两眼一抹黑。',
+        unlockLevel: 1,
+      },
+      {
+        name: '势利之眼',
+        description: '能更冷静地掂量「哪条抉择与当前处境更有利」，看清眼前的势与利。',
+        unlockLevel: 2,
+      },
+      {
+        name: '因果回响',
+        description: '旧的抉择会留下回响：当走向某个似曾相识的分岔时，你会记起相近结局的余韵。',
+        unlockLevel: 3,
+      },
+      {
+        name: '执棋之手',
+        description: '在紧要关头，你能从局中抽身半步，改写一次原本注定不利的命运走向。',
+        unlockLevel: 5,
+      },
     ],
     levelNames: ['初窥命运', '抉择者', '命运玩家', '平行行者', '执棋人'],
     maxActiveTasks: 1,
@@ -105,7 +141,11 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       { name: '钢筋铁骨', description: '经副本历练，皮肉与筋骨比常人坚韧，抗揍耐寒，疲惫恢复更快。', unlockLevel: 1 },
       { name: '情报拼图', description: '能从零散的痕迹与只言片语中拼出关键线索，看穿伪装的破绽。', unlockLevel: 2 },
       { name: '猎标追踪', description: '认准一个目标后，能循迹锁定它的行踪与方位。', unlockLevel: 3 },
-      { name: '瞬间凝滞', description: '生死一瞬，你周围的时间仿佛凝滞片刻，给你留出最后一线翻盘的空当。', unlockLevel: 5 },
+      {
+        name: '瞬间凝滞',
+        description: '生死一瞬，你周围的时间仿佛凝滞片刻，给你留出最后一线翻盘的空当。',
+        unlockLevel: 5,
+      },
     ],
     levelNames: ['新人', '轮回者', '精锐', '队长', '轮回长老'],
     maxActiveTasks: 2,
@@ -128,8 +168,16 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       '一个浮华张扬的世俗江湖：金银堆砌的商号、恩怨分明的帮派、酒楼赌坊里的一掷千金，处处是比「有钱」更值钱的名场面。在这里，财富是门槛，想象力与胆识才是被人传颂的东西。',
     goal: '把「花钱」这件事做到无人能及的艺术高度：不只是在某个场景挥霍，而是让自己的每一次散财都成为江湖新的传说，最终名动天下、富可敌国且为人称道。',
     skills: [
-      { name: '财气逼人', description: '出手自带排场与威慑，商贾谈价、江湖认门，先看你抖开的这副底气。', unlockLevel: 1 },
-      { name: '识货千金', description: '一眼看出钱该花在刀刃与名场面上的位置，差之毫厘不叫挥霍、叫失手。', unlockLevel: 3 },
+      {
+        name: '财气逼人',
+        description: '出手自带排场与威慑，商贾谈价、江湖认门，先看你抖开的这副底气。',
+        unlockLevel: 1,
+      },
+      {
+        name: '识货千金',
+        description: '一眼看出钱该花在刀刃与名场面上的位置，差之毫厘不叫挥霍、叫失手。',
+        unlockLevel: 3,
+      },
       { name: '化钱为势', description: '把挥霍转成声望与人脉，花钱的场面越大，欠你人情的人越多。', unlockLevel: 4 },
       { name: '撒钱成兵', description: '一掷千金的同时收拢人心：钱撒出去，真心跟过来的人也不在少数。', unlockLevel: 5 },
     ],

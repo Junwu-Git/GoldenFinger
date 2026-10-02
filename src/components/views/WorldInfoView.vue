@@ -37,7 +37,9 @@
         </button>
       </template>
       <div class="gf-setting-desc">
-        {{ t`逐书控制生成时携带的世界书。四态：关闭=整本排除，默认=跟随酒馆激活，强制=无视关闭态始终纳入，自定义=按条目手动勾选。` }}
+        {{
+          t`逐书控制生成时携带的世界书。四态：关闭=整本排除，默认=跟随酒馆激活，强制=无视关闭态始终纳入，自定义=按条目手动勾选。`
+        }}
       </div>
 
       <!-- 设置：总开关 -->
@@ -286,7 +288,13 @@ function cycleMode(name: string): void {
     return;
   }
   const next: WorldBookMode =
-    modeOf(name) === 'off' ? 'follow' : modeOf(name) === 'follow' ? 'force' : modeOf(name) === 'force' ? 'custom' : 'off';
+    modeOf(name) === 'off'
+      ? 'follow'
+      : modeOf(name) === 'follow'
+        ? 'force'
+        : modeOf(name) === 'force'
+          ? 'custom'
+          : 'off';
   setMode(name, next);
 }
 

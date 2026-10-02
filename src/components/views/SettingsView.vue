@@ -99,7 +99,9 @@
           :disabled="!settings.autoJudge"
         />
       </div>
-      <div class="gf-setting-desc">{{ t`每达到条数上限且有进行中任务时，系统会异步调用独立判定 API 结算任务，不依赖主 AI 在正文写判定标记。` }}</div>
+      <div class="gf-setting-desc">
+        {{ t`每达到条数上限且有进行中任务时，系统会异步调用独立判定 API 结算任务，不依赖主 AI 在正文写判定标记。` }}
+      </div>
     </GfSectionCard>
   </div>
 </template>

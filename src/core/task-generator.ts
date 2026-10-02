@@ -131,11 +131,7 @@ export async function composeShopMessages(
  * 独立判定请求（不依赖主 AI 在正文写标记）：把「系统裁定契约 + 最近剧情楼层 + 进行中任务清单」发给 API，
  * 让其逐条裁决完成/失败。契约 system → 真实剧情楼层 → user 请求；判定是玩家侧一条独立的结算路径。
  */
-export function composeJudgeMessages(
-  system: SystemDef,
-  gameState: GameState,
-  settings: Settings,
-): ChatMsg[] {
+export function composeJudgeMessages(system: SystemDef, gameState: GameState, settings: Settings): ChatMsg[] {
   const vars = buildVars(system, gameState);
   const contract = substituteParams(
     fillVars(
@@ -151,7 +147,9 @@ export function composeJudgeMessages(
     ),
   );
   const activeTasks = gameState.tasks.filter(task => task.status === 'active');
-  const list = activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('\n') || '（当前没有进行中的任务）';
+  const list =
+    activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('\n') ||
+    '（当前没有进行中的任务）';
   const request = substituteParams(
     fillVars(`【进行中任务】\n${list}\n\n请对照最近剧情，逐条裁决这些任务的完成/失败，只输出 JSON 数组。`, vars),
   );
