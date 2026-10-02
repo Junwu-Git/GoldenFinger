@@ -92,6 +92,14 @@
             <span class="gf-setting-label">{{ t`任务风格（该系统倾向发布什么类型的任务）` }}</span>
             <textarea v-model="editor.taskHint" class="text_input gf-textarea" rows="3"></textarea>
           </div>
+          <div class="gf-setting-col">
+            <span class="gf-setting-label">{{ t`世界观（不随当前角色场景走的宏观设定，生成任务的取景来源）` }}</span>
+            <textarea v-model="editor.worldview" class="text_input gf-textarea" rows="3"></textarea>
+          </div>
+          <div class="gf-setting-col">
+            <span class="gf-setting-label">{{ t`宿主长期目标（跨越单条剧情的追求，让生成内容更宽）` }}</span>
+            <textarea v-model="editor.goal" class="text_input gf-textarea" rows="2"></textarea>
+          </div>
           <div class="gf-editor-actions">
             <button class="menu_button" @click="saveCustomSystem">
               <i class="fa-solid fa-floppy-disk"></i>&nbsp;{{ t`保存` }}
@@ -140,6 +148,8 @@ function emptyEditor() {
     levelNamesText: '',
     persona: '',
     taskHint: '',
+    worldview: '',
+    goal: '',
   };
 }
 
@@ -158,6 +168,8 @@ function openEditor(index: number): void {
       levelNamesText: system.levelNames.join(','),
       persona: system.persona,
       taskHint: system.taskHint,
+      worldview: system.worldview,
+      goal: system.goal,
     });
   } else {
     Object.assign(editor, emptyEditor());
@@ -180,6 +192,9 @@ function saveCustomSystem(): void {
     tagline: '',
     persona: editor.persona.trim(),
     taskHint: editor.taskHint.trim(),
+    worldview: editor.worldview.trim(),
+    goal: editor.goal.trim(),
+    skills: [],
     levelNames,
     maxActiveTasks: _.clamp(Math.round(editor.maxActiveTasks) || 2, 1, 5),
     shopName: editor.shopName.trim() || '系统商店',

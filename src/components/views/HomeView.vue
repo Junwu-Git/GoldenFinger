@@ -28,7 +28,25 @@
         <div class="gf-exp-text">EXP {{ game.state.exp }} / {{ game.expNext }}</div>
       </div>
 
-      <div class="gf-view-title">{{ t`进行中的任务（${game.activeTasks.length}/${system.maxActiveTasks}）` }}</div>
+      <div v-if="game.unlockedSkills.length > 0" class="gf-skills">
+        <div class="gf-view-title">{{ t`已觉醒技能（${game.unlockedSkills.length}）` }}</div>
+        <div v-for="skill in game.unlockedSkills" :key="skill.name" class="gf-skill">
+          <span class="gf-skill-name">{{ skill.name }}</span>
+          <span class="gf-skill-desc">{{ skill.description }}</span>
+        </div>
+      </div>
+
+      <div class="gf-view-title gf-title-row">
+        <span>{{ t`进行中的任务（${game.activeTasks.length}/${system.maxActiveTasks}）` }}</span>
+        <button
+          class="gf-mini-btn gf-judge-btn"
+          :disabled="game.judging || game.activeTasks.length === 0"
+          @click="judge"
+        >
+          <i :class="game.judging ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-scale-balanced'"></i>
+          {{ game.judging ? t`判定中…` : t`独立判定` }}
+        </button>
+      </div>
       <template v-if="game.activeTasks.length > 0">
         <GfTaskCard v-for="task in game.activeTasks" :key="task.id" :task="task" @abandon="abandon" />
       </template>
@@ -102,6 +120,20 @@ async function issue(): Promise<void> {
   }
 }
 
+async function judge(): Promise<void> {
+  try {
+    const settled = await game.judgeTasks();
+    if (settled > 0) {
+      toastr.success(t`独立判定结算了 ${settled} 个任务`, t`金手指系统`);
+    } else {
+      toastr.info(t`独立判定完成：暂无任务有明确的完成/失败铁证`, t`金手指系统`);
+    }
+  } catch (error) {
+    console.error('[GoldenFinger] 独立判定失败', error);
+    toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
+  }
+}
+
 async function abandon(taskId: string): Promise<void> {
   const task = game.state.tasks.find(item => item.id === taskId);
   const context = window.SillyTavern?.getContext?.();
@@ -114,3 +146,34 @@ async function abandon(taskId: string): Promise<void> {
   }
 }
 </script>
+
+<style scoped>
+.gf-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gf-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.gf-skill {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--gf-bg-card, rgba(255, 255, 255, 0.04));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gf-skill-name {
+  font-weight: 600;
+  color: var(--gf-accent, inherit);
+}
+.gf-skill-desc {
+  font-size: 12px;
+  opacity: 0.85;
+}
+</style>

@@ -8,6 +8,13 @@
           <span class="gf-bag-count">×{{ item.count }}</span>
         </div>
         <div v-if="item.description" class="gf-bag-item-desc">{{ item.description }}</div>
+        <button
+          v-if="item.effect?.type && item.effect.type !== 'none'"
+          class="gf-mini-btn gf-use-btn"
+          @click="game.useItem(item.name)"
+        >
+          <i class="fa-solid fa-hand-pointer"></i>&nbsp;{{ t`使用` }}
+        </button>
       </div>
     </div>
     <div v-else class="gf-empty">
@@ -22,3 +29,9 @@ import { useGameStore } from '@/store/game';
 
 const game = useGameStore();
 </script>
+
+<style scoped>
+.gf-use-btn {
+  margin-top: 8px;
+}
+</style>

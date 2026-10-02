@@ -82,6 +82,25 @@
       </div>
       <div class="gf-setting-desc">{{ t`每达到条数上限且任务未满时，系统会异步调用 API 自动发布新任务。` }}</div>
     </GfSectionCard>
+
+    <!-- 自动判定 -->
+    <GfSectionCard v-model:open="judgeOpen" :title="t`自动判定任务`" icon="fa-solid fa-scale-balanced">
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.autoJudge" type="checkbox" />
+          <span>{{ t`开启` }}</span>
+        </label>
+        <input
+          v-model.number="settings.autoJudgeInterval"
+          class="text_input gf-number"
+          type="number"
+          min="1"
+          max="50"
+          :disabled="!settings.autoJudge"
+        />
+      </div>
+      <div class="gf-setting-desc">{{ t`每达到条数上限且有进行中任务时，系统会异步调用独立判定 API 结算任务，不依赖主 AI 在正文写判定标记。` }}</div>
+    </GfSectionCard>
   </div>
 </template>
 
@@ -98,6 +117,7 @@ const settingsStore = useSettingsStore();
 const { settings } = storeToRefs(settingsStore);
 
 const autoOpen = ref(false);
+const judgeOpen = ref(false);
 
 // #region 任务生成 API（草稿编辑，保存才生效）
 

@@ -79,7 +79,7 @@ async function composeMessages(
       continue;
     }
     const content = module.marker
-      ? markerContent(module.id, gameState, charSlots, worldSlots, personaBlock)
+      ? markerContent(module.id, system, gameState, charSlots, worldSlots, personaBlock)
       : fillVars(module.content, vars);
     if (!content?.trim()) {
       continue;
@@ -127,6 +127,68 @@ export async function composeShopMessages(
   return composeMessages(system, gameState, settings, pickModules(settings, 'shop'), {}, 'shop');
 }
 
+/**
+ * 独立判定请求（不依赖主 AI 在正文写标记）：把「系统裁定契约 + 最近剧情楼层 + 进行中任务清单」发给 API，
+ * 让其逐条裁决完成/失败。契约 system → 真实剧情楼层 → user 请求；判定是玩家侧一条独立的结算路径。
+ */
+export function composeJudgeMessages(
+  system: SystemDef,
+  gameState: GameState,
+  settings: Settings,
+): ChatMsg[] {
+  const vars = buildVars(system, gameState);
+  const contract = substituteParams(
+    fillVars(
+      [
+        '你是绑定于主角{{user}}的「{{systemName}}」任务裁定者。你唯一要做的事：对照最近剧情，逐条裁决进行中的任务完成/失败。',
+        '判定纪律：',
+        '- 只有剧情里明确可见「做成」才给 completed；剧情明确「已无法完成」才给 failed；证据不足、仍在推进的任务不要输出（保持进行中）。',
+        '- 一个任务最多判定一次；不要对进行中任务列表之外的编号下结论。',
+        '- 只输出 JSON 数组，形如 [{"id":"T001","status":"completed"}]，除此之外一字不写。',
+        '先输出 <thinking> 自检，再输出 JSON 数组。',
+      ].join('\n'),
+      vars,
+    ),
+  );
+  const activeTasks = gameState.tasks.filter(task => task.status === 'active');
+  const list = activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('\n') || '（当前没有进行中的任务）';
+  const request = substituteParams(
+    fillVars(`【进行中任务】\n${list}\n\n请对照最近剧情，逐条裁决这些任务的完成/失败，只输出 JSON 数组。`, vars),
+  );
+
+  const floors = buildChatFloors(
+    settings.contextMode,
+    settings.contextRounds,
+    settings.storyFilterRules,
+    settings.stRegexEnabled,
+  );
+  const msgs: ChatMsg[] = [{ role: 'system', content: contract }];
+  if (floors.length > 0) {
+    msgs.push(...floors);
+  }
+  msgs.push({ role: 'user', content: request });
+  return msgs;
+}
+
+/** 判定结果契约：只列出本次已可结算的进行中任务 */
+const VERDICT_SCHEMA = z.array(z.object({ id: z.string(), status: z.enum(['completed', 'failed']) })).max(20);
+
+/** 调用独立判定 API，返回已裁决的 {id, status} 表（纯函数：不碰状态，由 store 结算；对非 active 任务幂等） */
+export async function adjudicateTasks(
+  system: SystemDef,
+  gameState: GameState,
+  settings: Settings,
+): Promise<Array<{ id: string; status: 'completed' | 'failed' }>> {
+  const messages = composeJudgeMessages(system, gameState, settings);
+  const raw = await requestTaskCompletion({ messages, mainResponseLength: settings.api.maxTokens });
+  const parsed = parseJsonFromText(raw, VERDICT_SCHEMA, '[');
+  if (!parsed) {
+    console.error('[GoldenFinger] 判定 API 原始输出：', raw);
+    throw new Error(t`AI 没有返回有效的判定结果，请重试`);
+  }
+  return parsed;
+}
+
 /** 生成域模块：域被删空时回落默认模板；全禁用是明确意图，组装出空请求由调用方报错 */
 function pickModules(settings: Settings, kind: 'task' | 'shop'): PromptModule[] {
   const source =
@@ -141,14 +203,27 @@ function pickModules(settings: Settings, kind: 'task' | 'shop'): PromptModule[] 
  *  chat_history 不在此列，由 composeMessages 按楼层展开 */
 function markerContent(
   id: string,
+  system: SystemDef,
   gameState: GameState,
   charSlots: { description: string | null; personality: string | null; scenario: string | null },
   worldSlots: { before: string; after: string; depthBefore: string; depthAfter: string },
   personaBlock: string | null,
 ): string {
   switch (id) {
+    case 'world_overview': {
+      // 系统级背景：给生成参考区一份不随当前角色/场景走的宏观设定，拓宽取景（两块都空则跳过）
+      const blocks: string[] = [];
+      if (system.worldview?.trim()) {
+        blocks.push(`【系统世界观】\n${system.worldview.trim()}`);
+      }
+      if (system.goal?.trim()) {
+        blocks.push(`【宿主长期目标】\n${system.goal.trim()}`);
+      }
+      return blocks.join('\n\n');
+    }
     case 'gen_state': {
       const activeTasks = gameState.tasks.filter(task => task.status === 'active');
+      const unlockedSkills = (system.skills ?? []).filter(skill => gameState.level >= skill.unlockLevel);
       return [
         '【当前系统状态】',
         `宿主等级：Lv.${gameState.level}`,
@@ -157,6 +232,9 @@ function markerContent(
           ? [`持有物品：${gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')}`]
           : []),
         `进行中的任务：${activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('；') || '无'}`,
+        ...(unlockedSkills.length
+          ? [`宿主已觉醒技能：${unlockedSkills.map(skill => `「${skill.name}」：${skill.description}`).join('；')}`]
+          : []),
       ].join('\n');
     }
     case 'persona_description':

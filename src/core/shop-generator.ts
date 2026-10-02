@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { requestTaskCompletion } from '@/core/api-client';
 import { parseJsonFromText } from '@/core/json';
 import { composeShopMessages } from '@/core/task-generator';
-import { type GameState, ShopItem, type SystemDef } from '@/type/game';
+import { type GameState, type ItemEffect, ShopItem, type SystemDef } from '@/type/game';
 import type { Settings } from '@/type/settings';
 
 /** AI 返回的商品数组契约（id 由本地生成，不在提示词里要求） */
@@ -39,5 +39,12 @@ function normalizeItem(item: Omit<ShopItem, 'id'>, index: number): ShopItem {
     price: _.clamp(Math.round(item.price), 1, 99999),
     stock: item.stock === null ? null : _.clamp(Math.round(item.stock), 0, 999),
     rarity: _.clamp(Math.round(item.rarity), 1, 3),
+    // 归一到合法效果枚举；AI 漏填/填错一律按 none（纯收藏，无使用入口）
+    effect: {
+      type: (['points', 'exp', 'complete_task', 'none'] as const).includes(item.effect?.type)
+        ? (item.effect.type as ItemEffect['type'])
+        : 'none',
+      amount: _.clamp(Math.round(item.effect?.amount ?? 0), -9999, 99999),
+    },
   };
 }

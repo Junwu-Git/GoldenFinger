@@ -12,6 +12,7 @@ export function buildVars(system: SystemDef, state: GameState): Record<string, s
           )
           .join('\n')
       : '（暂无任务，等待系统发布）';
+  const unlockedSkills = (system.skills ?? []).filter(skill => state.level >= skill.unlockLevel);
   return {
     systemName: system.name,
     shopName: system.shopName,
@@ -24,6 +25,7 @@ export function buildVars(system: SystemDef, state: GameState): Record<string, s
       : '',
     tasks: tasksText,
     maxTasks: String(system.maxActiveTasks),
+    skills: unlockedSkills.length ? unlockedSkills.map(skill => `「${skill.name}」`).join('、') : '无',
   };
 }
 

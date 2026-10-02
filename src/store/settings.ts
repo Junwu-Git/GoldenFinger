@@ -2,7 +2,7 @@ import { saveSettingsDebounced } from '@sillytavern/script';
 import { extension_settings } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { DEFAULT_PROMPT_MODULES, DEFAULT_SHOP_MODULES, SCHEMA_VERSION, Settings, setting_field } from '@/type/settings';
+import { DEFAULT_GENERATE_MODULES, DEFAULT_PROMPT_MODULES, DEFAULT_SHOP_MODULES, SCHEMA_VERSION, Settings, setting_field } from '@/type/settings';
 import { validateInplace } from '@/util/zod';
 
 /**
@@ -21,6 +21,8 @@ import { validateInplace } from '@/util/zod';
  *   wi_depth_before|after/chat_history/reference_open|close 取代过渡的 gen_char、gen_world、gen_ref_open/close、gen_story。
  * - v8 → v9：商店货架生成接入模块系统——新增独立 shopPromptModules（默认 DEFAULT_SHOP_MODULES）。
  * - v9 → v10：移除注入位置选项（injectionPosition），注入恒为对话内（IN_CHAT）。
+ * - v10 → v11：世界书对齐 choice 四态——旧 worldBookOverrides（off/force/default）改名 worldBookModes（default→follow），
+ *   并初始化新的逐条覆盖/显式启用/全局排除空字段。
  * 生成域重建只重排生成域，注入域模块原样保留；custom_* 与未知 id 的生成模块保留在末尾。
  */
 /** 生成域已移除的内置模块 id：迁移时从用户存档中丢弃（并入新槽位/模块） */
@@ -152,6 +154,46 @@ function migrateSettings(raw: unknown): unknown {
   if (version < 10) {
     // 移除注入位置选项：注入恒为对话内（IN_CHAT），清理旧字段（zod strip 亦会吞掉）
     delete migrated.injectionPosition;
+  }
+  if (version < 11) {
+    // 世界书对齐 choice 四态：旧 worldBookOverrides 改名 worldBookModes，default→follow；
+    // 逐条覆盖/显式启用/全局排除是新空字段（zod default 兜底），无需搬运旧数据
+    const oldOverrides = (migrated as Record<string, unknown>).worldBookOverrides;
+    if (typeof oldOverrides === 'object' && oldOverrides !== null) {
+      const modes: Record<string, string> = {};
+      for (const [name, mode] of Object.entries(oldOverrides as Record<string, string>)) {
+        modes[name] = mode === 'default' ? 'follow' : mode;
+      }
+      migrated.worldBookModes = modes;
+    }
+    delete migrated.worldBookOverrides;
+  }
+  if (version < 12) {
+    // 新增「系统世界观/长期目标」marker 槽（world_overview）：给已存生成/商店模块列表插入默认槽，
+    // 位置固定在 reference_close 之后、gen_state 之前（缺 gen_state 则追加到末尾）；自定义顺序与启停保留
+    const injectSlot = (list: unknown, defs: typeof DEFAULT_GENERATE_MODULES): unknown => {
+      const modules = Array.isArray(list) ? [...(list as unknown[])] : [];
+      const def = defs.find(module => module.id === 'world_overview');
+      if (!def || modules.some(module => (module as { id?: string })?.id === 'world_overview')) {
+        return modules;
+      }
+      const genStateIdx = modules.findIndex(module => (module as { id?: string })?.id === 'gen_state');
+      modules.splice(genStateIdx >= 0 ? genStateIdx : modules.length, 0, structuredClone(def));
+      return modules;
+    };
+    migrated.promptModules = injectSlot(migrated.promptModules, DEFAULT_GENERATE_MODULES);
+    migrated.shopPromptModules = injectSlot(migrated.shopPromptModules, DEFAULT_SHOP_MODULES);
+  }
+  if (version < 13) {
+    // 技能系统：给注入域 status 模块补「已觉醒技能」行（缺 {{skills}} 才补，避免覆盖已自定义内容）
+    migrated.promptModules = (Array.isArray(migrated.promptModules) ? migrated.promptModules : []).map(module => {
+      const id = (module as { id?: string })?.id;
+      const content = (module as { content?: string })?.content;
+      if (id === 'status' && typeof content === 'string' && !content.includes('{{skills}}')) {
+        return { ...module, content: `${content}\n已觉醒技能：{{skills}}` };
+      }
+      return module;
+    });
   }
   return migrated;
 }

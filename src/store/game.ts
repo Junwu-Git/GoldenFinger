@@ -2,11 +2,11 @@ import toastr from 'toastr';
 import { saveMetadataDebounced } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import { generateTasksViaApi } from '@/core/task-generator';
+import { generateTasksViaApi, adjudicateTasks } from '@/core/task-generator';
 import { generateShopShelf } from '@/core/shop-generator';
 import { useSettingsStore } from '@/store/settings';
 import { findSystem } from '@/systems/builtin';
-import { GameState, expToNext, type LogKind, type SystemDef, type Task, type TaskStatus } from '@/type/game';
+import { defaultEffect, GameState, expToNext, type LogKind, type SystemDef, type Task, type TaskStatus } from '@/type/game';
 import { validateInplace } from '@/util/zod';
 
 /** 金手指游玩状态在聊天元数据中的字段名 */
@@ -18,6 +18,7 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   const state = ref<GameState>(readMetadata());
   const generating = ref(false);
   const shopGenerating = ref(false);
+  const judging = ref(false);
 
   /** reload 换入新聊天状态时抑制 watch 落盘（数据本来就是从元数据读的） */
   let suppressPersist = false;
@@ -68,6 +69,10 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   );
   const expNext = computed(() => expToNext(state.value.level));
   const levelTitle = computed(() => activeSystem.value?.levelNames[state.value.level - 1] ?? '');
+  /** 已觉醒的系统专属技能（Lv ≥ unlockLevel；纯剧情能力，无数值效果） */
+  const unlockedSkills = computed(() =>
+    (activeSystem.value?.skills ?? []).filter(skill => state.value.level >= skill.unlockLevel),
+  );
 
   function log(kind: LogKind, text: string): void {
     state.value.log.unshift({ time: Date.now(), kind, text });
@@ -148,6 +153,22 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     return state.value.msgCounter >= settings.autoIssueInterval;
   }
 
+  /** AI 回复计数；达到自动判定条件时返回 true（由调用方触发 judgeTasks） */
+  function noteAutoJudge(): boolean {
+    const { settings } = settingsStore;
+    if (!settings.enabled || !settings.autoJudge || !state.value.activeSystemId) {
+      return false;
+    }
+    if (judging.value) {
+      return false;
+    }
+    if (activeTasks.value.length === 0) {
+      return false;
+    }
+    state.value.judgeMsgCounter += 1;
+    return state.value.judgeMsgCounter >= settings.autoJudgeInterval;
+  }
+
   /**
    * 设置任务状态并结算奖励。
    * 完成的唯一入口是剧情 AI 的判定标记；玩家面板只能放弃（source='manual'）。
@@ -172,6 +193,21 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     return true;
   }
 
+  /** 增加经验并处理升级（一次可跨多级）；升级日志/toast 统一在此，结算与物品使用共用 */
+  function applyExp(amount: number): void {
+    if (amount <= 0) {
+      return;
+    }
+    const s = state.value;
+    s.exp += amount;
+    while (s.exp >= expToNext(s.level)) {
+      s.exp -= expToNext(s.level);
+      s.level += 1;
+      log('levelup', t`系统升级！当前等级 Lv.${s.level} ${levelTitle.value}`);
+      toastr.success(t`系统升级！当前等级 Lv.${s.level} ${levelTitle.value}`, t`金手指系统`);
+    }
+  }
+
   function settleRewards(task: Task): void {
     const s = state.value;
     const gainTexts: string[] = [];
@@ -184,25 +220,18 @@ export const useGameStore = defineStore('golden_finger_game', () => {
         if (item) {
           item.count += reward.amount;
         } else {
-          s.inventory.push({ name: reward.name, description: '', count: reward.amount });
+          s.inventory.push({ name: reward.name, description: '', count: reward.amount, effect: defaultEffect() });
         }
       }
       gainTexts.push(`${reward.name}×${reward.amount}`);
     }
 
     if (task.expReward > 0) {
-      s.exp += task.expReward;
       gainTexts.push(t`经验+${task.expReward}`);
     }
+    applyExp(task.expReward);
     log('reward', t`任务 ${task.id}《${task.title}》完成！获得：${gainTexts.join('、')}`);
     toastr.success(t`任务完成！获得 ${gainTexts.join('、')}`, t`金手指系统`);
-
-    while (s.exp >= expToNext(s.level)) {
-      s.exp -= expToNext(s.level);
-      s.level += 1;
-      log('levelup', t`系统升级！当前等级 Lv.${s.level} ${levelTitle.value}`);
-      toastr.success(t`系统升级！当前等级 Lv.${s.level} ${levelTitle.value}`, t`金手指系统`);
-    }
   }
 
   /** 清空本聊天的全部金手指数据 */
@@ -288,10 +317,99 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     if (owned) {
       owned.count += 1;
     } else {
-      state.value.inventory.push({ name: item.name, description: item.description, count: 1 });
+      // 商品效果随购买一并入包，供背包「使用」（effect=none 的纯收藏品则不可用）
+      state.value.inventory.push({ name: item.name, description: item.description, count: 1, effect: { ...item.effect } });
     }
     log('reward', t`购入「${item.name}」，花费 ${item.price} ${state.value.currencyName}`);
     toastr.success(t`已购入「${item.name}」`, t`金手指系统`);
+  }
+
+  // #endregion
+
+  // #region 背包物品使用
+
+  /** 使用背包物品：按 effect 即时结算后消耗数量（归零移出）；effect=none 或不存在视为纯收藏，不可用。 */
+  function useItem(name: string): void {
+    const s = state.value;
+    const item = s.inventory.find(candidate => candidate.name === name);
+    if (!item || item.count <= 0) {
+      return;
+    }
+    const effect = item.effect ?? defaultEffect();
+    const amount = effect.amount ?? 0;
+    const gained: string[] = [];
+    switch (effect.type) {
+      case 'points':
+        if (amount > 0) {
+          s.points += amount;
+          gained.push(`${s.currencyName}+${amount}`);
+        }
+        break;
+      case 'exp':
+        if (amount > 0) {
+          applyExp(amount);
+          gained.push(`经验+${amount}`);
+        }
+        break;
+      case 'complete_task': {
+        // 自动完成第一个进行中任务（结算奖励与升级）；玩家侧的一条非正文完成路径
+        const target = s.tasks.find(task => task.status === 'active');
+        if (target) {
+          setTaskStatus(target.id, 'completed');
+          gained.push(t`任务「${target.title}」已完成`);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    if (gained.length === 0) {
+      if (effect.type === 'none') {
+        toastr.info(t`「${name}」是纯收藏物品，没有可使用的效果`, t`金手指系统`);
+      } else {
+        // 有效果但当前无法落地（如 complete_task 已无进行中任务）：提示而非误报为收藏品
+        toastr.info(t`「${name}」现在用不了（例如没有进行中的任务可结算）`, t`金手指系统`);
+      }
+      return;
+    }
+    item.count -= 1;
+    if (item.count <= 0) {
+      s.inventory = s.inventory.filter(entry => entry.name !== name);
+    }
+    log('reward', t`使用了「${name}」——${gained.join('、')}`);
+    toastr.success(t`已使用「${name}」，${gained.join('、')}`, t`金手指系统`);
+  }
+
+  // #endregion
+
+  // #region 任务独立判定
+
+  /** 调独立判定 API 结算进行中任务（不依赖主 AI 写标记）；返回实际结算的任务条数。 */
+  async function judgeTasks(): Promise<number> {
+    const system = activeSystem.value;
+    if (!system) {
+      throw new Error(t`尚未绑定系统`);
+    }
+    if (judging.value) {
+      throw new Error(t`上一个判定还在进行中`);
+    }
+    if (activeTasks.value.length === 0) {
+      return 0;
+    }
+    judging.value = true;
+    try {
+      const verdicts = await adjudicateTasks(system, state.value, settingsStore.settings);
+      let settled = 0;
+      for (const verdict of verdicts) {
+        if (setTaskStatus(verdict.id, verdict.status)) {
+          settled += 1;
+        }
+      }
+      state.value.judgeMsgCounter = 0;
+      return settled;
+    } finally {
+      judging.value = false;
+    }
   }
 
   // #endregion
@@ -300,17 +418,22 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     state,
     generating,
     shopGenerating,
+    judging,
     activeSystem,
     activeTasks,
     closedTasks,
     expNext,
     levelTitle,
+    unlockedSkills,
     reload,
     activateSystem,
     deactivateSystem,
     issueTasks,
     noteAutoIssue,
+    noteAutoJudge,
     setTaskStatus,
+    useItem,
+    judgeTasks,
     resetState,
     clearLog,
     ensureShop,

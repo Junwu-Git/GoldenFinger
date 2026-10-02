@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SystemDef } from '@/type/game';
 
 /** 设置结构版本：字段结构破坏性变更时 +1 并在 settings store 里写迁移 */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 13;
 
 export const setting_field = 'golden_finger';
 
@@ -40,8 +40,14 @@ export const PromptModule = z.object({
 
 export type PromptModule = z.infer<typeof PromptModule>;
 
-/** 书层世界书覆盖模式：default=不覆盖（跟随酒馆激活），off=从生成中排除，force=强制纳入 */
-export const zWorldBookMode = z.enum(['off', 'force', 'default']);
+/**
+ * 书层世界书模式（choice 四态，对齐 choice 的 book_entry_modes）：
+ * - off：条目全关（生成时整本不注入）；
+ * - follow：条目启用——尊重酒馆条目 disable（默认）；
+ * - force：条目全启用——无视酒馆关闭条目与逐条覆盖；
+ * - custom：自定义——按 worldBookEntryOverrides 逐条生效（由手动勾选任意条目进入）。
+ */
+export const zWorldBookMode = z.enum(['off', 'follow', 'force', 'custom']);
 export type WorldBookMode = z.infer<typeof zWorldBookMode>;
 
 /** 楼层过滤规则（生成前清洗参考文本，三型同 choice 的 ChatFilterRule）：
@@ -96,7 +102,11 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     role: 'system',
     marker: false,
     enabled: true,
-    content: ['【当前系统状态】', '宿主：{{user}}｜{{level}}｜{{currency}}：{{points}}{{inventoryText}}'].join('\n'),
+    content: [
+      '【当前系统状态】',
+      '宿主：{{user}}｜{{level}}｜{{currency}}：{{points}}{{inventoryText}}',
+      '已觉醒技能：{{skills}}',
+    ].join('\n'),
   },
   {
     id: 'tasks',
@@ -224,6 +234,15 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
     content: '</reference>',
   },
   {
+    id: 'world_overview',
+    name: '系统世界观/长期目标',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
     id: 'gen_state',
     name: '当前状态',
     scope: 'generate',
@@ -333,7 +352,7 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
       '{{taskHint}}',
       '',
       '【本轮任务：发布新任务】以「{{systemName}}」的身份与设定，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），发布恰好 {{taskCount}} 个新任务，组成一批任务清单。',
-      '数量硬约束：恰好 {{taskCount}} 个，一个不多、一个不少；目标彼此不重叠、难度有梯度。任务要与当前情境有机衔接、宿主接了就能立刻展开；宁可贴合「{{systemName}}」的风格，也不要发布与该风格无关的泛泛任务。',
+      '数量硬约束：恰好 {{taskCount}} 个，一个不多、一个不少；目标彼此不重叠、难度有梯度。任务要与当前情境有机衔接、宿主接了就能立刻展开；宁可贴合「{{systemName}}」的风格，也不要发布与该风格无关的泛泛任务。任务不必只围绕当前角色与场景展开——可结合【系统世界观】与宿主长期目标，在系统设定的更大尺度上取材，让这批准点同时推进眼前剧情与长远成长。',
       '契约、信息边界与难度标尺见系统消息；先在 <thinking> 内完成自检，再输出 JSON 数组，数组之后一字不写。',
     ].join('\n\n'),
   },
@@ -447,6 +466,15 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
     content: '</reference>',
   },
   {
+    id: 'world_overview',
+    name: '系统世界观/长期目标',
+    scope: 'generate',
+    role: 'system',
+    marker: true,
+    enabled: true,
+    content: '',
+  },
+  {
     id: 'gen_state',
     name: '当前状态',
     scope: 'generate',
@@ -497,12 +525,20 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
       '  "description": "商品描述：它是什么、有何妙用，40字以内",',
       '  "price": 正整数价格,',
       '  "stock": 数量或 null(不限量),',
-      '  "rarity": 1到3的整数',
+      '  "rarity": 1到3的整数,',
+      '  "effect": {"type":"...","amount":N}',
       '}',
+      'effect 字段说明（宿主持有后可主动使用）：',
+      '- {"type":"points","amount":N}：使用后立刻获得 N 点货币；',
+      '- {"type":"exp","amount":N}：使用后立刻获得 N 点经验；',
+      '- {"type":"complete_task","amount":1}：使用后立刻自动完成一个进行中的任务（一次性消耗品，安排进传说/稀有档）；',
+      '- 无特殊效果的纯收藏/剧情道具写 {"type":"none","amount":0}。',
+      'amount 为 1~999 的正整数；type 只能是以上四者之一。',
       '生成要求：',
       '- 一批正好 10 件，一件都不能少；rarity 分布大致为 普通(1) 5 件、稀有(2) 3~4 件、传说(3) 1~2 件。',
       '- 价格带：普通 10~50、稀有 50~200、传说 200~1000；再结合宿主当前的等级与持有货币微调，让「攒一攒够得着传说」有盼头。',
       '- 商品必须契合店铺气质与世界观，且能在剧情中实际派上用场；10 件之间品类尽量错开，不要凑数重复。',
+      '- 有「主动效果」（points/exp/complete_task）的商品与纯收藏（none）错开编排，不要清一色全带效果。',
     ].join('\n'),
   },
   {
@@ -531,7 +567,7 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
       '【风格（必须严格遵守）】与「{{shopName}}」气质、世界观一致，贴合当前剧情。',
       '',
       '【本轮请求】以「{{shopName}}」的口吻，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），上一批正好 10 件的新货。',
-      '数量硬约束：正好 10 件，一件都不能少；品类尽量错开、贴合世界观；宁可贴合店铺气质，也不要上泛泛的普通商品。',
+      '数量硬约束：正好 10 件，一件都不能少；品类尽量错开、贴合世界观；宁可贴合店铺气质，也不要上泛泛的普通商品。商品不必只围绕当前角色与场景展开，可结合【系统世界观】与宿主长期目标，在系统设定的更大尺度上取材。',
       '契约见系统消息；先在 <thinking> 内完成自检，再输出 JSON 数组，数组之后一字不写。',
     ].join('\n\n'),
   },
@@ -561,6 +597,9 @@ export const Settings = z
     /** 每 N 条 AI 回复自动发布一批新任务 */
     autoIssue: z.boolean().default(true),
     autoIssueInterval: z.number().int().min(1).max(50).default(3).catch(3),
+    /** 每 N 条 AI 回复自动调独立判定 API 结算进行中任务（不依赖主 AI 写标记） */
+    autoJudge: z.boolean().default(false),
+    autoJudgeInterval: z.number().int().min(1).max(50).default(3).catch(3),
     /** 结算后自动移除 AI 回复中的 [任务完成:Txxx] 判定标记 */
     removeMarkers: z.boolean().default(true),
     /** 任务生成请求的 assistant 预填（应答声明 + 思维链预填）；关闭后这些模块降级为 system 消息 */
@@ -577,9 +616,15 @@ export const Settings = z
     storyFilterRules: z.array(StoryFilterRule).default([]),
     /** 生成前是否先走酒馆原生正则（全局/预设/角色卡已配置的脚本）再走本页 storyFilterRules */
     stRegexEnabled: z.boolean().default(true),
-    /** 书层世界书覆盖（书名 → 模式）：配置了任一 off/force 时，生成改用手动组装参与书集；
-     *  全为 default 时仍走酒馆原生 getWorldInfoPrompt 激活，零行为变化 */
-    worldBookOverrides: z.record(z.string(), zWorldBookMode.default('default')).default({}),
+    /** 每书模式（书名 → 四态 off/follow/force/custom，choice 语义）：任一非 follow 时，生成改用手动组装参与书集；
+     *  全为 follow 且无启用/全局排除/逐条覆盖时仍走酒馆原生 getWorldInfoPrompt 激活，零行为变化 */
+    worldBookModes: z.record(z.string(), zWorldBookMode.default('follow')).default({}),
+    /** custom 模式下的逐条覆盖（键=书名，内层键=条目 uid 字符串，值=启用态）。仅 custom 模式生效 */
+    worldBookEntryOverrides: z.record(z.string(), z.record(z.string(), z.boolean())).default({}),
+    /** 显式启用书（即便酒馆未激活也纳入生成，choice 的 enabled_books） */
+    worldBookEnabled: z.array(z.string()).default([]),
+    /** 全局排除书（所有聊天都不参与生成，choice 的 global_excluded_books） */
+    worldBookGlobalExcluded: z.array(z.string()).default([]),
     api: ApiSettings.prefault({}),
     /** 注入提示词模板（可编辑；default 用工厂防共享引用被就地污染） */
     promptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_PROMPT_MODULES)),

@@ -11,8 +11,19 @@ import type { Settings, WorldBookMode } from '@/type/settings';
 
 /** loadWorldInfo 返回值按使用面声明（world-info.js 实际返回 { entries: Record<uid, 条目> }） */
 type LoadedWorldBook = {
-  entries?: Record<string, { content?: string; disable?: boolean }>;
+  entries?: Record<string, WorldBookEntry>;
 } | null;
+
+/** 世界书条目（按 UI 展开/消费使用面声明；constant/vectorized 仅展示用） */
+export type WorldBookEntry = {
+  uid?: number | string;
+  comment?: string;
+  key?: string[] | string;
+  content?: string;
+  constant?: boolean;
+  disable?: boolean;
+  vectorized?: boolean;
+};
 
 /** 世界书取数预算：沿 choice 的放大值——独立生成请求不吃正文上下文预算，放大才能装下大条目 */
 const WI_MAX_CONTEXT = 128_000;
@@ -81,31 +92,46 @@ export async function buildWorldInfoSlots(settings: Settings): Promise<WorldInfo
 
 /**
  * 世界书设定按 choice 槽位分桶：
- * - 无书层覆盖（worldBookOverrides 全 default/空）→ 走酒馆原生 getWorldInfoPrompt 扫描（零行为变化）；
- * - 任一 off/force 覆盖 → 手动组装参与书集（激活源中未 off 的书 + 所有 force 的书，default 书跟随 entry.disable、
- *   force 书无视 disable）。手动组装不读写酒馆世界书缓存，也就不会影响正文主生成
+ * - 无任何覆盖（全 follow、无显式启用、无全局排除、无逐条）→ 走酒馆原生 getWorldInfoPrompt 扫描（零行为变化）；
+ * - 任一覆盖 → 手动组装参与书集（激活源中未 off/未全局排除的书 + 所有 force 的书 + 显式启用书；follow 书跟随
+ *   entry.disable、force 书无视 disable、custom 书按逐条覆盖）。手动组装不读写酒馆世界书缓存，也就不影响正文主生成
  *   （choice 用缓存变异做书层控制，本扩展避免那个副作用）。
  */
 async function getWorldInfoBlock(context: any, settings: Settings): Promise<WorldInfoSlots> {
-  const overrides = settings.worldBookOverrides ?? {};
-  const hasOverride = Object.values(overrides).some(mode => mode === 'off' || mode === 'force');
-  if (hasOverride) {
-    const manual = await getWorldInfoOverridden(overrides);
+  const modes = settings.worldBookModes ?? {};
+  const enabled = settings.worldBookEnabled ?? [];
+  const globalExcluded = settings.worldBookGlobalExcluded ?? [];
+  const entryOverrides = settings.worldBookEntryOverrides ?? {};
+  const hasModeCover = Object.values(modes).some(mode => mode !== 'follow');
+  if (hasModeCover || enabled.length > 0 || globalExcluded.length > 0 || Object.keys(entryOverrides).length > 0) {
+    const manual = await getWorldInfoOverridden(settings);
     return { before: manual ?? '', after: '', depthBefore: '', depthAfter: '' };
   }
   return await getWorldInfoNative(context);
 }
 
 /** 书层覆盖下的手动组装：不依赖酒馆关键字/概率选择，按书集收拢全部可选条目 */
-async function getWorldInfoOverridden(overrides: Record<string, WorldBookMode>): Promise<string | null> {
+async function getWorldInfoOverridden(settings: Settings): Promise<string | null> {
+  const overrides = settings.worldBookEntryOverrides ?? {};
+  const modes = settings.worldBookModes ?? {};
+  const globalExcluded = new Set(settings.worldBookGlobalExcluded ?? []);
+  const enabledBooks = settings.worldBookEnabled ?? [];
+  const modeOf = (name: string): WorldBookMode => modes[name] ?? 'follow';
+
+  // 参与书集 = 激活书（未全局排除、非 off）+ 显式启用书（未全局排除、非 off）+ 所有 force 书（无视关闭态）
   const activeNames = new Set(listActiveWorldBooks().map(book => book.name));
   const participating = new Set<string>();
   for (const name of activeNames) {
-    if (overrides[name] !== 'off') {
+    if (!globalExcluded.has(name) && modeOf(name) !== 'off') {
       participating.add(name);
     }
   }
-  for (const [name, mode] of Object.entries(overrides)) {
+  for (const name of enabledBooks) {
+    if (name && !globalExcluded.has(name) && modeOf(name) !== 'off') {
+      participating.add(name);
+    }
+  }
+  for (const [name, mode] of Object.entries(modes)) {
     if (name && mode === 'force') {
       participating.add(name);
     }
@@ -116,12 +142,29 @@ async function getWorldInfoOverridden(overrides: Record<string, WorldBookMode>):
     if (!name.trim()) {
       continue;
     }
-    const force = overrides[name] === 'force';
+    const mode = modeOf(name);
     try {
       const data = (await loadWorldInfo(name)) as LoadedWorldBook | null;
       const entries = data?.entries ? Object.values(data.entries) : [];
+      const bookOverrides = overrides[name] ?? {};
       for (const entry of entries) {
-        if (entry.disable && !force) {
+        if (mode === 'off') {
+          continue; // off 书已不参与，防御
+        }
+        if (mode === 'force') {
+          // force 无视一切关闭态
+        } else if (mode === 'custom') {
+          // custom：按逐条覆盖；快照未覆盖的条目保持酒馆原状
+          const uid = String(entry.uid ?? '');
+          if (uid && typeof bookOverrides[uid] === 'boolean') {
+            if (!bookOverrides[uid]) {
+              continue;
+            }
+          } else if (entry.disable) {
+            continue;
+          }
+        } else if (entry.disable) {
+          // follow：尊重酒馆条目 disable
           continue;
         }
         const content = String(entry.content ?? '').trim();
@@ -259,5 +302,28 @@ export function listAllWorldBooks(): WorldBookRow[] {
   } catch (error) {
     console.warn('[GoldenFinger] 枚举世界书失败', error);
     return [];
+  }
+}
+
+/**
+ * 加载一本书的条目列表，供世界书界面展开逐条勾选。触发 loadWorldInfo（未命中缓存时网络拉取）。
+ * 失败返回 null；条目按使用面声明字段，调用点显式断言。
+ */
+export async function loadWorldBookEntries(name: string): Promise<WorldBookEntry[] | null> {
+  try {
+    const data = (await loadWorldInfo(name)) as LoadedWorldBook | null;
+    const entries = data?.entries ? Object.values(data.entries) : [];
+    return entries.map(entry => ({
+      uid: entry.uid,
+      comment: entry.comment,
+      key: entry.key,
+      content: entry.content,
+      constant: entry.constant,
+      disable: entry.disable,
+      vectorized: entry.vectorized,
+    }));
+  } catch (error) {
+    console.warn('[GoldenFinger] 加载世界书条目失败，已跳过：', name, error);
+    return null;
   }
 }

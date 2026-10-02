@@ -61,6 +61,19 @@ $(() => {
               toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
             });
         }
+        if (game.noteAutoJudge()) {
+          void game
+            .judgeTasks()
+            .then(settled => {
+              if (settled > 0) {
+                toastr.success(t`叮！系统自动判定结算了 ${settled} 个任务`, t`金手指系统`);
+              }
+            })
+            .catch((error: unknown) => {
+              console.error('[GoldenFinger] 自动判定失败', error);
+              toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
+            });
+        }
       } catch (error) {
         console.error('[GoldenFinger] 自动发布判定失败', error);
       }

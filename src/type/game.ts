@@ -4,6 +4,16 @@ import { z } from 'zod';
 
 // #region 系统定义
 
+/** 系统专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒，纯剧情能力（不产生数值效果），注入给 AI 供剧情施展 */
+export const SystemSkill = z.object({
+  name: z.string().min(1).max(24),
+  description: z.string().min(1).max(300),
+  /** 觉醒所需等级（Lv 到达即觉醒，可从 1 级起自带） */
+  unlockLevel: z.number().int().min(1).max(99).default(1),
+});
+
+export type SystemSkill = z.infer<typeof SystemSkill>;
+
 /** 内置与自定义金手指系统共用的定义。persona 会同时用于任务生成与提示词注入。 */
 export const SystemDef = z.object({
   /** 唯一 id：内置系统为固定值，自定义系统以 custom_ 开头 */
@@ -19,6 +29,12 @@ export const SystemDef = z.object({
   persona: z.string().default(''),
   /** 任务风格指引：该系统倾向发布什么类型的任务，仅用于任务生成 */
   taskHint: z.string().default(''),
+  /** 系统世界观：该系统所处世界的整体设定/规则，生成任务与货架时作为更宏观的取景来源 */
+  worldview: z.string().default(''),
+  /** 宿主长期目标：跨越单条剧情的追求，让生成内容不必只围绕当前场景展开 */
+  goal: z.string().default(''),
+  /** 该系统可觉醒的专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒（纯剧情能力，注入给 AI 在剧情里施展） */
+  skills: z.array(SystemSkill).default([]),
   /** 等级称号，下标为 level-1，超出后显示 Lv.N */
   levelNames: z.array(z.string()).default([]),
   maxActiveTasks: z.number().int().min(1).max(5).default(2).catch(2),
@@ -84,6 +100,20 @@ export type ParsedTask = z.infer<typeof ParsedTask>;
 /** 稀有度：1 普通 / 2 稀有 / 3 传说 */
 export const RARITY_NAMES: Record<number, string> = { 1: '普通', 2: '稀有', 3: '传说' };
 
+/** 物品效果：AI 在商品生成契约里指定的结构化效果，购买入包后在背包里可主动「使用」。
+ *  type=none 表示纯收藏/剧情道具，无使用入口。amount 语义随 type 而定（货币/经验数值）。 */
+export const ItemEffect = z.object({
+  type: z.enum(['points', 'exp', 'complete_task', 'none']).default('none'),
+  amount: z.number().int().default(0).catch(0),
+});
+
+export type ItemEffect = z.infer<typeof ItemEffect>;
+
+/** 背包内可使用的物品效果默认值（避免到处手写对象字面量） */
+export function defaultEffect(): ItemEffect {
+  return { type: 'none', amount: 0 };
+}
+
 export const ShopItem = z.object({
   /** 货架内唯一；每次换一批整批重新生成 */
   id: z.string(),
@@ -93,6 +123,7 @@ export const ShopItem = z.object({
   /** null = 不限量 */
   stock: z.number().int().min(0).nullable().default(null).catch(null),
   rarity: z.number().int().min(1).max(3).default(1).catch(1),
+  effect: ItemEffect.default(() => defaultEffect()),
 });
 
 export type ShopItem = z.infer<typeof ShopItem>;
@@ -114,6 +145,8 @@ export const InventoryItem = z.object({
   name: z.string().min(1).max(24),
   description: z.string().max(120).default(''),
   count: z.number().min(-9999).max(9999),
+  /** 购买时从商品带入；任务奖励入包的物品为默认 none（纯收藏） */
+  effect: ItemEffect.default(() => defaultEffect()),
 });
 
 export type InventoryItem = z.infer<typeof InventoryItem>;
@@ -145,6 +178,8 @@ export const GameState = z
     log: z.array(LogEntry).max(80).default([]),
     /** 距上次发布任务收到的 AI 回复数（自动发布用） */
     msgCounter: z.number().int().default(0).catch(0),
+    /** 距上次判定收到的 AI 回复数（自动判定用） */
+    judgeMsgCounter: z.number().int().default(0).catch(0),
     /** 商店货架；null = 从未开店（首次进店免费生成） */
     shop: ShopState.nullable().default(null),
   })
