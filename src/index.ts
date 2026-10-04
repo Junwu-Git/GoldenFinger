@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import toastr from 'toastr';
 import '@/global.css';
 import App from '@/App.vue';
@@ -94,4 +95,11 @@ $(() => {
     console.error('[GoldenFinger] init failed', error);
     toastr.error(`金手指系统初始化失败: ${error instanceof Error ? error.message : String(error)}`);
   }
+=======
+import '@/global.css';
+import { initPanel } from '@/panel';
+
+$(() => {
+  initPanel();
+>>>>>>> 48edc12088607f08f9c7bc58e80f633a45adc9c4
 });
