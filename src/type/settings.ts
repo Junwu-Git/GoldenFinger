@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // 显式导入 z：auto-imports.d.ts 的全局 z 在类型位置无法当命名空间用（同 type/game.ts）
 import { z } from 'zod';
 import { SystemDef } from '@/type/game';
@@ -636,3 +637,13 @@ export const Settings = z
     panelVisible: z.boolean().default(false),
   })
   .prefault({});
+=======
+export type Settings = z.infer<typeof Settings>;
+export const Settings = z
+  .object({
+    button_selected: z.boolean().default(false),
+  })
+  .prefault({});
+
+export const setting_field = 'tavern_extension_example';
+>>>>>>> 29792ccc77088474d2c4eeb7c42285cd2b57f1e7
