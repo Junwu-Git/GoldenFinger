@@ -42,7 +42,9 @@ export function buildInjectionText(system: SystemDef, state: GameState, settings
   const vars = buildVars(system, state);
   if (settings.hiddenInjectionMode) {
     // 隐藏模式：固定预设只列宿主所持之物，不暴露系统/任务/判定（正文 AI 不再输出判定标记，结算走独立 API/超时）
-    const covert = structuredClone(DEFAULT_COVERT_INJECT_MODULES).filter(module => module.enabled && module.content.trim());
+    const covert = structuredClone(DEFAULT_COVERT_INJECT_MODULES).filter(
+      module => module.enabled && module.content.trim(),
+    );
     return substituteParams(covert.map(module => fillVars(module.content, vars)).join('\n\n'));
   }
   const injectModules = settings.promptModules.filter(module => module.scope === 'inject');

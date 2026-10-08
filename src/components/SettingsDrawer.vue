@@ -28,11 +28,7 @@
             >{{ system.icon }} {{ system.name }}</span
           >
           <span class="gf-flex"></span>
-          <button
-            class="menu_button menu_button_icon gf-copy"
-            :title="t`复制系统定义`"
-            @click="copySystem(index)"
-          >
+          <button class="menu_button menu_button_icon gf-copy" :title="t`复制系统定义`" @click="copySystem(index)">
             <i class="fa-solid fa-copy"></i>
           </button>
           <button
@@ -422,7 +418,10 @@ function importFromText(): void {
       t`金手指系统`,
     );
   } catch (err) {
-    toastr.error(`${t`导入失败，请检查 JSON 格式或字段`}\n${err instanceof Error ? err.message : String(err)}`, t`金手指系统`);
+    toastr.error(
+      `${t`导入失败，请检查 JSON 格式或字段`}\n${err instanceof Error ? err.message : String(err)}`,
+      t`金手指系统`,
+    );
   }
 }
 

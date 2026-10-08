@@ -226,7 +226,11 @@ export const useGameStore = defineStore('golden_finger_game', () => {
    * （deadline 或 AI 判定），不由玩家手动触发；玩家面板「放弃」是中性「作废」（status='voided'），不计失败、无惩罚。
    * @returns 任务是否存在且为 active（判定标记解析依赖它做幂等）
    */
-  function setTaskStatus(taskId: string, status: TaskStatus, source: 'marker' | 'manual' | 'timeout' = 'marker'): boolean {
+  function setTaskStatus(
+    taskId: string,
+    status: TaskStatus,
+    source: 'marker' | 'manual' | 'timeout' = 'marker',
+  ): boolean {
     const task = state.value.tasks.find(item => item.id === taskId && item.status === 'active');
     if (!task) {
       return false;
@@ -468,14 +472,16 @@ export const useGameStore = defineStore('golden_finger_game', () => {
       }
       // 合并去重（同名保留系统批次优先），总量不超过 12
       const seen = new Set<string>();
-      const items = [...systemItems, ...characterItems].filter(item => {
-        const key = item.name.trim().toLowerCase();
-        if (seen.has(key)) {
-          return false;
-        }
-        seen.add(key);
-        return true;
-      }).slice(0, 12);
+      const items = [...systemItems, ...characterItems]
+        .filter(item => {
+          const key = item.name.trim().toLowerCase();
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12);
       const previous = state.value.shop;
       state.value.shop = { items, generatedAt: Date.now(), rollCount: (previous?.rollCount ?? 0) + 1 };
       log('system', t`「${system.shopName}」上了一批新货（第${state.value.shop.rollCount}批）`);

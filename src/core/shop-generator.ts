@@ -5,13 +5,7 @@ import { buildCharSlots, buildPersonaContext } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
 import { buildVars, fillVars } from '@/core/prompt-vars';
 import { composeShopMessages } from '@/core/task-generator';
-import {
-  type AttributeFx,
-  type GameState,
-  type ItemEffect,
-  ShopItem,
-  type SystemDef,
-} from '@/type/game';
+import { type AttributeFx, type GameState, type ItemEffect, ShopItem, type SystemDef } from '@/type/game';
 import type { Settings } from '@/type/settings';
 
 /** AI 返回的商品数组契约（id 由本地生成，不在提示词里要求） */
@@ -70,19 +64,13 @@ export async function generateCharacterShelf(
 }
 
 /** 角色专属货架请求：system 定位 + 角色卡/女主设定，user 只写请求与契约（不参与正文角色扮演） */
-function composeCharacterShopMessages(
-  system: SystemDef,
-  gameState: GameState,
-  settings: Settings,
-): ChatMsg[] {
+function composeCharacterShopMessages(system: SystemDef, gameState: GameState, settings: Settings): ChatMsg[] {
   const vars = buildVars(system, gameState);
   const fill = (template: string): string => substituteParams(fillVars(template, vars));
 
   const charSlots = buildCharSlots(settings);
   const personaBlock = buildPersonaContext();
-  const card = [charSlots.description, charSlots.personality, charSlots.scenario]
-    .filter(Boolean)
-    .join('\n\n');
+  const card = [charSlots.description, charSlots.personality, charSlots.scenario].filter(Boolean).join('\n\n');
 
   const systemMsg = fill(
     [
@@ -113,14 +101,13 @@ function composeCharacterShopMessages(
     ].join('\n'),
   );
 
-  return [{ role: 'system', content: systemMsg }, { role: 'user', content: requestMsg }];
+  return [
+    { role: 'system', content: systemMsg },
+    { role: 'user', content: requestMsg },
+  ];
 }
 
-function normalizeItem(
-  item: Omit<ShopItem, 'id'>,
-  index: number,
-  category: 'system' | 'character',
-): ShopItem {
+function normalizeItem(item: Omit<ShopItem, 'id'>, index: number, category: 'system' | 'character'): ShopItem {
   const kind = (ITEM_KINDS as readonly string[]).includes(String(item.kind)) ? (item.kind as ShopItem['kind']) : 'item';
   const type = (EFFECT_TYPES as readonly string[]).includes(item.effect?.type)
     ? (item.effect.type as ItemEffect['type'])

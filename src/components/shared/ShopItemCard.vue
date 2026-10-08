@@ -4,9 +4,7 @@
       <span class="gf-shop-item-name">{{ item.name }}</span>
       <span class="gf-rarity-badge" :class="`rarity-${item.rarity}`">{{ rarityName(item.rarity) }}</span>
     </div>
-    <div v-if="item.kind === 'skill'" class="gf-item-kind">
-      <i class="fa-solid fa-wand-sparkles"></i> {{ t`技能` }}
-    </div>
+    <div v-if="item.kind === 'skill'" class="gf-item-kind"><i class="fa-solid fa-wand-sparkles"></i> {{ t`技能` }}</div>
     <div v-else-if="item.effect?.type === 'attribute'" class="gf-item-kind gf-item-kind-attr">
       <i class="fa-solid fa-heart-pulse"></i> {{ t`身体改造` }}
     </div>

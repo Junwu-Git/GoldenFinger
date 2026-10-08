@@ -129,7 +129,9 @@
           <span>{{ t`超时失败扣减惩罚（奖励里的负数项）` }}</span>
         </label>
       </div>
-      <div class="gf-setting-desc">{{ t`任务逾期会自动结算为失败；开启惩罚后，会把任务奖励里的负数项（货币/物品）作为惩罚扣减。` }}</div>
+      <div class="gf-setting-desc">
+        {{ t`任务逾期会自动结算为失败；开启惩罚后，会把任务奖励里的负数项（货币/物品）作为惩罚扣减。` }}
+      </div>
     </GfSectionCard>
   </div>
 </template>
@@ -191,7 +193,12 @@ function clampNumberInput(value: unknown, min: number, max: number, fallback: nu
 }
 
 /** 直接绑定 store 的数字框在 change 时清洗（schema 的 catch 只在下次加载兜底，当次会话仍是脏值） */
-function clampSetting(key: 'autoIssueInterval' | 'autoJudgeInterval' | 'taskTimeoutMinutes', min: number, max: number, fallback: number): void {
+function clampSetting(
+  key: 'autoIssueInterval' | 'autoJudgeInterval' | 'taskTimeoutMinutes',
+  min: number,
+  max: number,
+  fallback: number,
+): void {
   settings.value[key] = clampNumberInput(settings.value[key] as unknown, min, max, fallback);
 }
 

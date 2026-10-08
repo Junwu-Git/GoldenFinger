@@ -37,11 +37,12 @@
         <div class="gf-view-title">{{ t`已觉醒技能（${game.unlockedSkills.length}）` }}</div>
         <div v-for="skill in game.unlockedSkills" :key="skill.name" class="gf-skill">
           <span class="gf-skill-name">{{ skill.name }}</span>
-          <span
-            v-if="skill.effect && skill.effect.type !== 'none' && skill.effect.amount !== 0"
-            class="gf-skill-bonus"
-          >
-            {{ skill.effect.type === 'exp' ? t`经验+${skill.effect.amount}` : t`${game.state.currencyName}+${skill.effect.amount}` }}
+          <span v-if="skill.effect && skill.effect.type !== 'none' && skill.effect.amount !== 0" class="gf-skill-bonus">
+            {{
+              skill.effect.type === 'exp'
+                ? t`经验+${skill.effect.amount}`
+                : t`${game.state.currencyName}+${skill.effect.amount}`
+            }}
           </span>
           <span class="gf-skill-desc">{{ skill.description }}</span>
         </div>

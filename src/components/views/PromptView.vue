@@ -14,7 +14,11 @@
         <input v-model="settings.hiddenInjectionMode" type="checkbox" />
         <span>{{ t`正文不感知系统（隐藏模式）` }}</span>
       </label>
-      <div class="gf-setting-desc">{{ t`开启后正文只注入宿主所持之物（物品/技能/身体状态），系统设定、人格、任务与判定规则都不再进入正文；任务改由独立判定或超时结算。` }}</div>
+      <div class="gf-setting-desc">
+        {{
+          t`开启后正文只注入宿主所持之物（物品/技能/身体状态），系统设定、人格、任务与判定规则都不再进入正文；任务改由独立判定或超时结算。`
+        }}
+      </div>
     </GfSectionCard>
 
     <!-- 提示词模板（choice 式模块编辑：注入域拼面板状态，生成域组装生成请求的 messages） -->
@@ -74,7 +78,11 @@
               <span>{{ module.name }}</span>
             </label>
             <span class="gf-flex"></span>
-            <button class="gf-link-btn gf-pm-grip" :title="t`拖拽排序`" @pointerdown="beginDrag(injectModules, idx, $event)">
+            <button
+              class="gf-link-btn gf-pm-grip"
+              :title="t`拖拽排序`"
+              @pointerdown="beginDrag(injectModules, idx, $event)"
+            >
               <i class="fa-solid fa-grip-vertical"></i>
             </button>
             <button class="gf-link-btn" :title="t`上移`" @click="moveModule(module, -1)">
@@ -128,7 +136,11 @@
               </span>
             </label>
             <span class="gf-flex"></span>
-            <button class="gf-link-btn gf-pm-grip" :title="t`拖拽排序`" @pointerdown="beginDrag(generateModules, idx, $event)">
+            <button
+              class="gf-link-btn gf-pm-grip"
+              :title="t`拖拽排序`"
+              @pointerdown="beginDrag(generateModules, idx, $event)"
+            >
               <i class="fa-solid fa-grip-vertical"></i>
             </button>
             <select v-model="module.role" class="gf-pm-role-select">
@@ -187,7 +199,11 @@
               </span>
             </label>
             <span class="gf-flex"></span>
-            <button class="gf-link-btn gf-pm-grip" :title="t`拖拽排序`" @pointerdown="beginDrag(shopModules, idx, $event)">
+            <button
+              class="gf-link-btn gf-pm-grip"
+              :title="t`拖拽排序`"
+              @pointerdown="beginDrag(shopModules, idx, $event)"
+            >
               <i class="fa-solid fa-grip-vertical"></i>
             </button>
             <select v-model="module.role" class="gf-pm-role-select">
@@ -552,11 +568,10 @@ const schedulePreview = _.debounce(async () => {
   }
 }, 300);
 
-watch(
-  [previewOpen, previewTab, () => settings.value, () => game.state],
-  () => schedulePreview(),
-  { deep: true, immediate: true },
-);
+watch([previewOpen, previewTab, () => settings.value, () => game.state], () => schedulePreview(), {
+  deep: true,
+  immediate: true,
+});
 
 watch(previewContent, async text => {
   if (!text) {

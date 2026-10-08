@@ -238,7 +238,9 @@ function markerContent(
           ? [`宿主已学技能：${gameState.learnedSkills.map(skill => `「${skill.name}」`).join('、')}`]
           : []),
         ...(gameState.attributes.length
-          ? [`身体状态：${gameState.attributes.map(attr => `${attr.target ? `${attr.target}·` : ''}${attr.name} ${attrDisplay(attr)}`).join('、')}`]
+          ? [
+              `身体状态：${gameState.attributes.map(attr => `${attr.target ? `${attr.target}·` : ''}${attr.name} ${attrDisplay(attr)}`).join('、')}`,
+            ]
           : []),
       ];
       // 每日签到系统：把今日签到状态喂给生成端，避免 AI 重复发同一签到任务
