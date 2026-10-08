@@ -78,6 +78,7 @@
           min="1"
           max="50"
           :disabled="!settings.autoIssue"
+          @change="clampSetting('autoIssueInterval', 1, 50, 3)"
         />
       </div>
       <div class="gf-setting-desc">{{ t`每达到条数上限且任务未满时，系统会异步调用 API 自动发布新任务。` }}</div>
@@ -97,11 +98,38 @@
           min="1"
           max="50"
           :disabled="!settings.autoJudge"
+          @change="clampSetting('autoJudgeInterval', 1, 50, 3)"
         />
       </div>
       <div class="gf-setting-desc">
         {{ t`每达到条数上限且有进行中任务时，系统会异步调用独立判定 API 结算任务，不依赖主 AI 在正文写判定标记。` }}
       </div>
+    </GfSectionCard>
+
+    <!-- 任务时限与失败惩罚 -->
+    <GfSectionCard v-model:open="timeoutOpen" :title="t`任务时限与失败惩罚`" icon="fa-solid fa-hourglass-half">
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.taskTimeoutEnabled" type="checkbox" />
+          <span>{{ t`任务超时自动判失败` }}</span>
+        </label>
+        <input
+          v-model.number="settings.taskTimeoutMinutes"
+          class="text_input gf-number"
+          type="number"
+          min="1"
+          max="1440"
+          :disabled="!settings.taskTimeoutEnabled"
+          @change="clampSetting('taskTimeoutMinutes', 1, 1440, 60)"
+        />
+      </div>
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.failPunishmentEnabled" type="checkbox" :disabled="!settings.taskTimeoutEnabled" />
+          <span>{{ t`超时失败扣减惩罚（奖励里的负数项）` }}</span>
+        </label>
+      </div>
+      <div class="gf-setting-desc">{{ t`任务逾期会自动结算为失败；开启惩罚后，会把任务奖励里的负数项（货币/物品）作为惩罚扣减。` }}</div>
     </GfSectionCard>
   </div>
 </template>
@@ -120,6 +148,7 @@ const { settings } = storeToRefs(settingsStore);
 
 const autoOpen = ref(false);
 const judgeOpen = ref(false);
+const timeoutOpen = ref(false);
 
 // #region 任务生成 API（草稿编辑，保存才生效）
 
@@ -146,8 +175,24 @@ const modelOptions = computed<string[]>(() =>
 );
 
 function saveApi(): void {
+  // 数字框直输不可信：保存前钳制到 schema 允许区间，避免越界值存进会话、下次加载被 zod 静默重置
+  draft.maxTokens = clampNumberInput(draft.maxTokens, 64, 8192, 2500);
   Object.assign(settings.value.api, klona(draft));
   toastr.success(t`API 设置已保存`, t`金手指系统`);
+}
+
+/** 数字框输入清洗：空/非法回退 fallback，越界钳到 [min,max]（v-model.number 清空时给 ''） */
+function clampNumberInput(value: unknown, min: number, max: number, fallback: number): number {
+  const num = Math.round(Number(value));
+  if (value === '' || value === null || value === undefined || !Number.isFinite(num)) {
+    return fallback;
+  }
+  return _.clamp(num, min, max);
+}
+
+/** 直接绑定 store 的数字框在 change 时清洗（schema 的 catch 只在下次加载兜底，当次会话仍是脏值） */
+function clampSetting(key: 'autoIssueInterval' | 'autoJudgeInterval' | 'taskTimeoutMinutes', min: number, max: number, fallback: number): void {
+  settings.value[key] = clampNumberInput(settings.value[key] as unknown, min, max, fallback);
 }
 
 function resetApi(): void {

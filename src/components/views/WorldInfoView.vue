@@ -227,18 +227,21 @@ watch(
 
 const allBooks = computed(() => books.value);
 
-/** 参与生成的书 = active（激活中且未 off 且未全局排除）或 enabled 或 force */
+/** 已启用列表归属 = 酒馆激活书或本扩展显式启用书（choice 同款），与 off/全局排除等参与态解耦——
+ *  切到 off 或全局排除的书仍留在「已启用」区、由参与态变暗，不会跌出列表（修复角色绑定书切 off 后消失）；
+ *  参与书置顶 */
 const activeBooks = computed<WorldBookRow[]>(() => {
+  const inList = (book: WorldBookRow) => book.active || isEnabled(book.name);
   const participating = (book: WorldBookRow) =>
-    (book.active || isEnabled(book.name)) && !isGlobalExcluded(book.name) && modeOf(book.name) !== 'off';
-  return [...allBooks.value].filter(participating).sort((a, b) => Number(participating(b)) - Number(participating(a)));
+    inList(book) && !isGlobalExcluded(book.name) && modeOf(book.name) !== 'off';
+  return [...allBooks.value].filter(inList).sort((a, b) => Number(participating(b)) - Number(participating(a)));
 });
 
-const inactiveBooks = computed<WorldBookRow[]>(() => {
-  const participating = (book: WorldBookRow) =>
-    (book.active || isEnabled(book.name)) && !isGlobalExcluded(book.name) && modeOf(book.name) !== 'off';
-  return allBooks.value.filter(book => !participating(book));
-});
+/** 未启用区 = 既非酒馆激活也非显式启用的书（choice 同款）；off/全局排除的书因仍属激活源，
+ *  留在「已启用」列表由参与态变暗，不进这里 */
+const inactiveBooks = computed<WorldBookRow[]>(() =>
+  allBooks.value.filter(book => !book.active && !isEnabled(book.name)),
+);
 
 const globalExcludedBooks = computed(() => settings.value.worldBookGlobalExcluded);
 
@@ -346,6 +349,12 @@ function toggleEntry(bookName: string, entry: WorldBookEntry): void {
 const enableBook = (name: string) => {
   const enabled = settings.value.worldBookEnabled;
   if (!enabled.includes(name)) enabled.push(name);
+  // 显式启用与「关闭/全局排除」互斥：不同步清掉参与判定里的排除态，启用按钮就是个空操作
+  // （off 仍整本排除、全局排除仍不参与），被改到未启用的角色绑定书就再也拉不回来。
+  if (modeOf(name) === 'off') {
+    setMode(name, 'follow');
+  }
+  removeGlobalExcl(name);
   void loadEntries(name);
   expanded.value.add(name);
 };

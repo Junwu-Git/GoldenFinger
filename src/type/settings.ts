@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SystemDef } from '@/type/game';
 
 /** 设置结构版本：字段结构破坏性变更时 +1 并在 settings store 里写迁移 */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 15;
 
 export const setting_field = 'golden_finger';
 
@@ -106,6 +106,7 @@ export const DEFAULT_PROMPT_MODULES: PromptModule[] = [
       '【当前系统状态】',
       '宿主：{{user}}｜{{level}}｜{{currency}}：{{points}}{{inventoryText}}',
       '已觉醒技能：{{skills}}',
+      '{{attributes}}',
     ].join('\n'),
   },
   {
@@ -526,19 +527,23 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
       '  "price": 正整数价格,',
       '  "stock": 数量或 null(不限量),',
       '  "rarity": 1到3的整数,',
+      '  "kind": "item"或"skill",',
       '  "effect": {"type":"...","amount":N}',
       '}',
+      'kind 字段说明：普通实体商品写 "item"（购买入背包后可主动使用）；若是「技能」写 "skill"（宿主购买即直接习得、不入背包）。',
       'effect 字段说明（宿主持有后可主动使用）：',
       '- {"type":"points","amount":N}：使用后立刻获得 N 点货币；',
       '- {"type":"exp","amount":N}：使用后立刻获得 N 点经验；',
       '- {"type":"complete_task","amount":1}：使用后立刻自动完成一个进行中的任务（一次性消耗品，安排进传说/稀有档）；',
+      '- {"type":"attribute","attribute":{"target":"…","attribute":"罩杯","amount":1,"unit":"档","tiers":["平坦","A","B","C","D","E","F"]}}：使用后改变目标角色的身体属性（身体改造类商品专用）；',
       '- 无特殊效果的纯收藏/剧情道具写 {"type":"none","amount":0}。',
-      'amount 为 1~999 的正整数；type 只能是以上四者之一。',
+      'amount 为 1~999 的正整数；type 只能是以上五者之一；attribute 负载的字段：target=目标角色名、attribute=属性名、amount=增减量、unit=单位、tiers=可选档位标签。',
       '生成要求：',
+      '- 这批是「系统通用商品」，不针对当前角色的个人细节，而是店铺气质与世界观里普遍流通的货品。',
       '- 一批正好 10 件，一件都不能少；rarity 分布大致为 普通(1) 5 件、稀有(2) 3~4 件、传说(3) 1~2 件。',
       '- 价格带：普通 10~50、稀有 50~200、传说 200~1000；再结合宿主当前的等级与持有货币微调，让「攒一攒够得着传说」有盼头。',
       '- 商品必须契合店铺气质与世界观，且能在剧情中实际派上用场；10 件之间品类尽量错开，不要凑数重复。',
-      '- 有「主动效果」（points/exp/complete_task）的商品与纯收藏（none）错开编排，不要清一色全带效果。',
+      '- 有「主动效果」（points/exp/complete_task/attribute）的商品与纯收藏（none）错开编排，不要清一色全带效果。',
     ].join('\n'),
   },
   {
@@ -566,7 +571,7 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
     content: [
       '【风格（必须严格遵守）】与「{{shopName}}」气质、世界观一致，贴合当前剧情。',
       '',
-      '【本轮请求】以「{{shopName}}」的口吻，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），上一批正好 10 件的新货。',
+      '【本轮请求】以「{{shopName}}」的口吻，结合上方参考区、当前状态与最近剧情（以 <current_scene> 标记的最新进展为准），上一批正好 10 件的「系统通用」新货——不针对当前角色的个人细节，而是店铺里普遍流通的货品；可以是道具，也可以是宿主购买即习得的技能（kind 写 "skill"）。',
       '数量硬约束：正好 10 件，一件都不能少；品类尽量错开、贴合世界观；宁可贴合店铺气质，也不要上泛泛的普通商品。商品不必只围绕当前角色与场景展开，可结合【系统世界观】与宿主长期目标，在系统设定的更大尺度上取材。',
       '契约见系统消息；先在 <thinking> 内完成自检，再输出 JSON 数组，数组之后一字不写。',
     ].join('\n\n'),
@@ -586,6 +591,19 @@ export const DEFAULT_SHOP_MODULES: PromptModule[] = [
 export const DEFAULT_INJECT_MODULES = DEFAULT_PROMPT_MODULES.filter(module => module.scope === 'inject');
 export const DEFAULT_GENERATE_MODULES = DEFAULT_PROMPT_MODULES.filter(module => module.scope === 'generate');
 
+/** 隐藏模式固定注入预设：正文只看到宿主所持之物（{{covertStatus}} 由 buildVars 拼好中性描述），不暴露系统/等级/货币/任务/判定 */
+export const DEFAULT_COVERT_INJECT_MODULES: PromptModule[] = [
+  {
+    id: 'covert_status',
+    name: '隐藏状态',
+    scope: 'inject',
+    role: 'system',
+    marker: false,
+    enabled: true,
+    content: '{{covertStatus}}',
+  },
+];
+
 export type Settings = z.infer<typeof Settings>;
 export const Settings = z
   .object({
@@ -594,6 +612,8 @@ export const Settings = z
     enabled: z.boolean().default(true),
     /** in_chat 模式下距对话末尾的深度（注入位置恒为对话内 IN_CHAT） */
     injectionDepth: z.number().int().min(0).max(20).default(4).catch(4),
+    /** 隐藏模式：正文注入只列宿主所持之物（物品/技能/身体状态），不暴露系统存在；判定走独立 API/超时，正文不再输出标记 */
+    hiddenInjectionMode: z.boolean().default(false),
     /** 每 N 条 AI 回复自动发布一批新任务 */
     autoIssue: z.boolean().default(true),
     autoIssueInterval: z.number().int().min(1).max(50).default(3).catch(3),
@@ -602,6 +622,12 @@ export const Settings = z
     autoJudgeInterval: z.number().int().min(1).max(50).default(3).catch(3),
     /** 结算后自动移除 AI 回复中的 [任务完成:Txxx] 判定标记 */
     removeMarkers: z.boolean().default(true),
+    /** 任务时限：开启后进行中的任务逾期自动判失败（不依赖 AI 演出失败） */
+    taskTimeoutEnabled: z.boolean().default(false),
+    /** 任务超时时长（分钟）；发布时换算为 deadline */
+    taskTimeoutMinutes: z.number().int().min(1).max(1440).default(60).catch(60),
+    /** 超时判失败时是否把任务奖励里的负数项作为惩罚扣减（货币/背包） */
+    failPunishmentEnabled: z.boolean().default(false),
     /** 任务生成请求的 assistant 预填（应答声明 + 思维链预填）；关闭后这些模块降级为 system 消息 */
     prefillEnabled: z.boolean().default(true),
     /** 任务生成参考剧情的上下文模式（choice 式）：visible_only = 全部可见楼层；rounds = 最近 N 轮（每轮=用户+助手 2 层） */
@@ -625,11 +651,24 @@ export const Settings = z
     worldBookEnabled: z.array(z.string()).default([]),
     /** 全局排除书（所有聊天都不参与生成，choice 的 global_excluded_books） */
     worldBookGlobalExcluded: z.array(z.string()).default([]),
+    /** 商店生成是否同时按角色卡生成「角色专属」商品批次（系统通用批次始终生成） */
+    characterShopEnabled: z.boolean().default(true),
     api: ApiSettings.prefault({}),
     /** 注入提示词模板（可编辑；default 用工厂防共享引用被就地污染） */
     promptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_PROMPT_MODULES)),
     /** 商店货架生成模板（choice 式，独立于任务生成模板；可编辑） */
     shopPromptModules: z.array(PromptModule).default(() => structuredClone(DEFAULT_SHOP_MODULES)),
+    /** 提示词模板预设：命名快照（promptModules + shopPromptModules 整份拷贝）。
+     *  编辑仍作用于当前激活集（promptModules/shopPromptModules），「另存为」才写回预设、「加载」才覆盖当前 */
+    promptTemplatePresets: z
+      .record(
+        z.string(),
+        z.object({
+          promptModules: z.array(PromptModule),
+          shopPromptModules: z.array(PromptModule),
+        }),
+      )
+      .default({}),
     customSystems: z.array(SystemDef).default([]),
     /** 面板窗口位置（-1 表示未初始化，首开时停靠右上） */
     panelPos: z.object({ x: z.number(), y: z.number() }).default({ x: -1, y: -1 }).catch({ x: -1, y: -1 }),

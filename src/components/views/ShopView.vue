@@ -26,29 +26,46 @@
 
     <!-- 货架 -->
     <template v-else-if="shopItems.length > 0">
-      <div class="gf-shelf-grid">
-        <div v-for="item in shopItems" :key="item.id" class="gf-shop-item" :class="`rarity-${item.rarity}`">
-          <div class="gf-shop-item-head">
-            <span class="gf-shop-item-name">{{ item.name }}</span>
-            <span class="gf-rarity-badge" :class="`rarity-${item.rarity}`">{{ rarityName(item.rarity) }}</span>
-          </div>
-          <div v-if="item.description" class="gf-shop-item-desc">{{ item.description }}</div>
-          <div class="gf-shop-item-foot">
-            <span class="gf-price-pill" :class="{ poor: game.state.points < item.price }">💰 {{ item.price }}</span>
-            <span v-if="item.stock !== null" class="gf-stock" :class="{ out: item.stock <= 0 }">
-              {{ item.stock <= 0 ? t`售罄` : t`剩 ${item.stock} 件` }}
-            </span>
-            <span class="gf-flex"></span>
-            <button
-              class="gf-mini-btn ok"
-              :disabled="game.state.points < item.price || (item.stock !== null && item.stock <= 0)"
-              @click="game.buyItem(item.id)"
-            >
-              <i class="fa-solid fa-cart-shopping"></i> {{ t`购买` }}
-            </button>
+      <div class="gf-shop-toolbar">
+        <label class="gf-char-toggle">
+          <input v-model="settings.characterShopEnabled" type="checkbox" />
+          <span>{{ t`角色专属商品` }}</span>
+        </label>
+        <span class="gf-flex"></span>
+        <button
+          class="gf-secondary-btn gf-refresh-btn"
+          :disabled="game.shopGenerating || game.state.points < refreshCost"
+          :title="t`换一批需要 ${refreshCost} ${game.state.currencyName}`"
+          @click="refresh"
+        >
+          <i :class="game.shopGenerating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-rotate'"></i>
+          {{ refreshCost > 0 ? t`换一批（${refreshCost} ${game.state.currencyName}）` : t`换一批` }}
+        </button>
+      </div>
+
+      <!-- 系统通用商品栏 -->
+      <template v-if="systemItems.length > 0">
+        <div class="gf-shop-section">
+          <span class="gf-shop-section-title">{{ t`系统通用商品` }}</span>
+          <div class="gf-shelf-grid">
+            <div v-for="item in systemItems" :key="item.id" class="gf-shop-item" :class="`rarity-${item.rarity}`">
+              <ShopItemCard :item="item" :points="game.state.points" @buy="game.buyItem(item.id)" />
+            </div>
           </div>
         </div>
-      </div>
+      </template>
+
+      <!-- 角色专属商品栏 -->
+      <template v-if="characterItems.length > 0">
+        <div class="gf-shop-section">
+          <span class="gf-shop-section-title">{{ t`角色专属商品` }}</span>
+          <div class="gf-shelf-grid">
+            <div v-for="item in characterItems" :key="item.id" class="gf-shop-item" :class="`rarity-${item.rarity}`">
+              <ShopItemCard :item="item" :points="game.state.points" @buy="game.buyItem(item.id)" />
+            </div>
+          </div>
+        </div>
+      </template>
     </template>
 
     <!-- 空货架 -->
@@ -57,34 +74,27 @@
       {{ t`货架空空如也。` }}
       <button class="gf-secondary-btn" @click="openShop">{{ t`催老板上货` }}</button>
     </div>
-
-    <!-- 换一批 -->
-    <button
-      v-if="system"
-      class="gf-secondary-btn gf-refresh-btn"
-      :disabled="game.shopGenerating || game.state.points < refreshCost"
-      :title="t`换一批需要 ${refreshCost} ${game.state.currencyName}`"
-      @click="refresh"
-    >
-      <i :class="game.shopGenerating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-rotate'"></i>
-      {{ refreshCost > 0 ? t`换一批（${refreshCost} ${game.state.currencyName}）` : t`换一批` }}
-    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import toastr from 'toastr';
+import { storeToRefs } from 'pinia';
 import { computed, onMounted } from 'vue';
+import ShopItemCard from '@/components/shared/ShopItemCard.vue';
 import { useGameStore } from '@/store/game';
-import { RARITY_NAMES } from '@/type/game';
+import { useSettingsStore } from '@/store/settings';
 
 const emit = defineEmits<{
   navigate: [tab: 'home'];
 }>();
 
 const game = useGameStore();
+const { settings } = storeToRefs(useSettingsStore());
 const system = computed(() => game.activeSystem);
 const shopItems = computed(() => game.state.shop?.items ?? []);
+const systemItems = computed(() => shopItems.value.filter(item => item.category === 'system'));
+const characterItems = computed(() => shopItems.value.filter(item => item.category === 'character'));
 const refreshCost = computed(() => system.value?.refreshCost ?? 0);
 
 // 绑定状态下进店：无货架时免费开张
@@ -97,10 +107,6 @@ onMounted(() => {
     toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
   });
 });
-
-function rarityName(rarity: number): string {
-  return RARITY_NAMES[rarity] ?? RARITY_NAMES[1];
-}
 
 async function openShop(): Promise<void> {
   try {

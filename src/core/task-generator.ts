@@ -5,7 +5,8 @@ import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
 import { buildCharSlots, buildPersonaContext, buildWorldInfoSlots } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
 import { buildVars, fillVars } from '@/core/prompt-vars';
-import { type GameState, ParsedTask, type SystemDef } from '@/type/game';
+import { type BodyAttribute, type GameState, ParsedTask, type SystemDef } from '@/type/game';
+import { todayDateStr } from '@/util/date';
 import {
   DEFAULT_GENERATE_MODULES,
   DEFAULT_SHOP_MODULES,
@@ -222,7 +223,7 @@ function markerContent(
     case 'gen_state': {
       const activeTasks = gameState.tasks.filter(task => task.status === 'active');
       const unlockedSkills = (system.skills ?? []).filter(skill => gameState.level >= skill.unlockLevel);
-      return [
+      const lines = [
         '【当前系统状态】',
         `宿主等级：Lv.${gameState.level}`,
         `持有货币：${gameState.currencyName} ×${gameState.points}`,
@@ -233,7 +234,23 @@ function markerContent(
         ...(unlockedSkills.length
           ? [`宿主已觉醒技能：${unlockedSkills.map(skill => `「${skill.name}」：${skill.description}`).join('；')}`]
           : []),
-      ].join('\n');
+        ...(gameState.learnedSkills.length
+          ? [`宿主已学技能：${gameState.learnedSkills.map(skill => `「${skill.name}」`).join('、')}`]
+          : []),
+        ...(gameState.attributes.length
+          ? [`身体状态：${gameState.attributes.map(attr => `${attr.target ? `${attr.target}·` : ''}${attr.name} ${attrDisplay(attr)}`).join('、')}`]
+          : []),
+      ];
+      // 每日签到系统：把今日签到状态喂给生成端，避免 AI 重复发同一签到任务
+      if (system.dailyReward) {
+        const signed = gameState.signIn.lastSignInDate === todayDateStr();
+        lines.push(
+          signed
+            ? `每日签到：今日已签到（连续 ${gameState.signIn.streak} 天），不要再发布当日的签到任务`
+            : '每日签到：今日未签到，可以安排一个当日的签到任务',
+        );
+      }
+      return lines.join('\n');
     }
     case 'persona_description':
       return personaBlock ?? '';
@@ -277,10 +294,6 @@ function filterStoryFloor(
   return trimmed || null;
 }
 
-/**
- * 取最近 N 条消息拼成「名字：内容」的剧情摘要（商店扁平路径，单条截断防 token 爆炸）；
- * stRegexEnabled 时每条先过酒馆原生正则，再走本页过滤规则。任务生成改走 buildChatFloors，本函数仅服务商店。
- */
 /** 取聊天可见楼层（剔除 is_system 隐藏层，同 choice 的 coreChat 语义），按上下文模式切窗口 */
 function visibleStoryFloors(mode: 'visible_only' | 'rounds', rounds: number): StChatMessage[] {
   const chat = (window.SillyTavern?.getContext?.()?.chat ?? []) as StChatMessage[];
@@ -330,6 +343,14 @@ function buildChatFloors(
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 身体属性展示：有档位标签取 tiers[value]，否则 value+unit（用 0 兜底防越界） */
+function attrDisplay(attr: BodyAttribute): string {
+  if (attr.tiers?.length) {
+    return attr.tiers[_.clamp(attr.value, 0, attr.tiers.length - 1)] ?? `${attr.value}${attr.unit}`;
+  }
+  return `${attr.value}${attr.unit}`;
 }
 
 /**

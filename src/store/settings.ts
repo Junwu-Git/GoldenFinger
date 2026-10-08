@@ -30,6 +30,7 @@ import { validateInplace } from '@/util/zod';
  * - v9 → v10：移除注入位置选项（injectionPosition），注入恒为对话内（IN_CHAT）。
  * - v10 → v11：世界书对齐 choice 四态——旧 worldBookOverrides（off/force/default）改名 worldBookModes（default→follow），
  *   并初始化新的逐条覆盖/显式启用/全局排除空字段。
+ * - v14 → v15：新增 hiddenInjectionMode（隐藏模式）空字段，zod 兜底，无数据搬运。
  * 生成域重建只重排生成域，注入域模块原样保留；custom_* 与未知 id 的生成模块保留在末尾。
  */
 /** 生成域已移除的内置模块 id：迁移时从用户存档中丢弃（并入新槽位/模块） */
@@ -198,6 +199,17 @@ function migrateSettings(raw: unknown): unknown {
       const content = (module as { content?: string })?.content;
       if (id === 'status' && typeof content === 'string' && !content.includes('{{skills}}')) {
         return { ...module, content: `${content}\n已觉醒技能：{{skills}}` };
+      }
+      return module;
+    });
+  }
+  if (version < 14) {
+    // 身体改造属性：给注入域 status 模块补「身体状态」行（缺 {{attributes}} 才补，避免覆盖已自定义内容）
+    migrated.promptModules = (Array.isArray(migrated.promptModules) ? migrated.promptModules : []).map(module => {
+      const id = (module as { id?: string })?.id;
+      const content = (module as { content?: string })?.content;
+      if (id === 'status' && typeof content === 'string' && !content.includes('{{attributes}}')) {
+        return { ...module, content: `${content}\n{{attributes}}` };
       }
       return module;
     });
