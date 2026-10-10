@@ -9,6 +9,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+<<<<<<< HEAD
 
 # unplugin 生成物，构建时自动再生成
 auto-imports.d.ts
@@ -19,3 +20,5 @@ components.d.ts
 .mimosa/
 .zcode/
 .zcodeignore
+=======
+>>>>>>> 4af016ef3c8d031ba403a25fc9f3e26fc4c3e5b3
