@@ -207,7 +207,7 @@ async function abandon(taskId: string): Promise<void> {
   color: var(--gf-text-1);
 }
 .gf-signin.signed i {
-  color: var(--gf-accent);
+  color: var(--gf-ok);
 }
 .gf-skills {
   display: flex;
@@ -217,8 +217,8 @@ async function abandon(taskId: string): Promise<void> {
 }
 .gf-skill {
   padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--gf-bg-card, rgba(255, 255, 255, 0.04));
+  border-radius: var(--gf-radius-md);
+  background: var(--gf-bg-1);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -242,8 +242,8 @@ async function abandon(taskId: string): Promise<void> {
 }
 .gf-attr {
   padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--gf-bg-card, rgba(255, 255, 255, 0.04));
+  border-radius: var(--gf-radius-md);
+  background: var(--gf-bg-1);
   display: flex;
   align-items: center;
   justify-content: space-between;

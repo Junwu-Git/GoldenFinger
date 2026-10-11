@@ -108,13 +108,6 @@
 
       <div v-if="promptTab === 'task'" class="gf-pm-domain">
         <div class="gf-pm-domain-title">{{ t`任务生成模板` }}</div>
-        <label
-          class="checkbox_label gf-prefill-row"
-          :title="t`关闭后仅将应答声明与思维链预填的 assistant 角色改为 system，其他模块与提示词顺序不变。`"
-        >
-          <input v-model="settings.prefillEnabled" type="checkbox" />
-          <span>{{ t`预填充` }}</span>
-        </label>
         <div class="gf-setting-desc">
           {{
             t`模块按顺序组装成发给生成 API 的请求消息，相邻同角色的消息会自动合并；带锁标记的系统槽位内容由扩展自动填充，只能调整位置与角色。`
@@ -180,7 +173,7 @@
         <div class="gf-pm-domain-title">{{ t`商店生成模板` }}</div>
         <div class="gf-setting-desc">
           {{
-            t`商店货架生成走与任务一致的 choice 式模块（同一套参考区/聊天槽位 + 商店专用 定位/契约/思考/请求），预填充开关与任务共享。`
+            t`商店货架生成走与任务一致的 choice 式模块（同一套参考区/聊天槽位 + 商店专用 定位/契约/思考/请求），模块按自身角色发送。`
           }}
         </div>
         <div
@@ -352,13 +345,31 @@ function deletePreset(): void {
   toastr.success(t`已删除模板预设`, t`金手指系统`);
 }
 
-// 拖拽排序：把手 pointerdown 起拖，卡片 pointerover 更新落点，window pointerup 落盘（同面板手写 pointer 方案）
+// 拖拽排序：把手 pointerdown 起拖，卡片 pointerover 更新落点（鼠标），window pointermove 兜底定位
+// （触屏指针隐式捕获不会触发其它卡片的 pointerover），window pointerup 落盘（同面板手写 pointer 方案）
 const drag = ref<{ list: PromptModule[]; from: number; to: number } | null>(null);
 
 function beginDrag(list: PromptModule[], from: number, event: PointerEvent): void {
   // 把手本身就是起拖按钮，不需要再排除按钮；直接起拖
   drag.value = { list, from, to: from };
   event.preventDefault();
+  window.addEventListener('pointermove', onDragMove);
+}
+
+/** pointermove 期用命中元素定位落点卡片：三个域互斥渲染（v-if），可见卡片顺序即当前域列表顺序 */
+function onDragMove(event: PointerEvent): void {
+  if (!drag.value) {
+    return;
+  }
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  const card = el instanceof Element ? el.closest('.gf-pm-card') : null;
+  if (!card) {
+    return;
+  }
+  const idx = Array.prototype.indexOf.call(document.querySelectorAll('.gf-pm-card'), card);
+  if (idx >= 0) {
+    setDragTo(drag.value.list, idx);
+  }
 }
 
 function setDragTo(list: PromptModule[], index: number): void {
@@ -393,6 +404,7 @@ function reorderModuleInScope(list: PromptModule[], from: number, to: number): v
 }
 
 function endDrag(): void {
+  window.removeEventListener('pointermove', onDragMove);
   const d = drag.value;
   if (!d) {
     return;
@@ -404,6 +416,7 @@ function endDrag(): void {
 }
 
 function cancelDrag(): void {
+  window.removeEventListener('pointermove', onDragMove);
   drag.value = null;
 }
 
@@ -419,11 +432,11 @@ onUnmounted(() => {
 
 // 变量清单放 script 里拼：模板里直接写 {{ }} 会被 Vue 当插值
 const injectVarHint =
-  '{{user}} {{systemName}} {{persona}} {{level}} {{currency}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{signinState}} {{covertStatus}}';
+  '{{user}} {{systemName}} {{persona}} {{level}} {{currency}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{passiveStates}} {{signinState}} {{covertStatus}}';
 const genVarHint =
-  '{{user}} {{systemName}} {{persona}} {{taskHint}} {{taskCount}} {{currency}} {{level}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{signinState}}';
+  '{{user}} {{systemName}} {{persona}} {{taskHint}} {{taskCount}} {{currency}} {{level}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{passiveStates}} {{signinState}}';
 const shopVarHint =
-  '{{user}} {{systemName}} {{shopName}} {{persona}} {{currency}} {{level}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{signinState}}';
+  '{{user}} {{systemName}} {{shopName}} {{persona}} {{currency}} {{level}} {{points}} {{inventoryText}} {{tasks}} {{maxTasks}} {{skills}} {{attributes}} {{passiveStates}} {{signinState}} {{characterShelf}}';
 
 function moveModule(module: PromptModule, dir: -1 | 1): void {
   const list = settings.value.promptModules;
@@ -619,10 +632,6 @@ async function copyPreview(): Promise<void> {
 
 .gf-pm-domain {
   margin-bottom: 6px;
-}
-
-.gf-prefill-row {
-  margin: 2px 0 6px;
 }
 
 .gf-pm-tabs {

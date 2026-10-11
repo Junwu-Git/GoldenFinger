@@ -85,7 +85,7 @@ export async function requestTaskCompletion({ messages, mainResponseLength }: Ap
   }
 
   if (!api.url.trim() || !api.model.trim()) {
-    toastr.warning(t`请在扩展设置中填写副 API 地址与模型`, t`金手指系统`);
+    toastr.warning(t`请在面板「设置」页填写副 API 地址与模型`, t`金手指系统`);
     throw new Error(t`副 API 未配置`);
   }
   return await callSecondaryApi(messages, api);

@@ -2,8 +2,10 @@ import toastr from 'toastr';
 import { saveMetadataDebounced } from '@sillytavern/scripts/extensions';
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import { generateTasksViaApi, adjudicateTasks } from '@/core/task-generator';
-import { generateShopShelf, generateCharacterShelf } from '@/core/shop-generator';
+import { generateTasksViaApi } from '@/core/task-generator';
+import { requestMaintenance, type MaintenanceSections } from '@/core/maintenance';
+import { generateShopShelf } from '@/core/shop-generator';
+import type { StateOp } from '@/core/state-tracker';
 import { useSettingsStore } from '@/store/settings';
 import { findSystem } from '@/systems/builtin';
 import {
@@ -13,7 +15,7 @@ import {
   type AttributeFx,
   type BodyAttribute,
   type LogKind,
-  type ShopItem,
+  type PassiveStateKind,
   type SystemDef,
   type Task,
   type TaskStatus,
@@ -29,6 +31,7 @@ const MAX_CLOSED_TASKS = 40;
 const MAX_INVENTORY = 50;
 const MAX_LEARNED_SKILLS = 50;
 const MAX_ATTRIBUTES = 50;
+const MAX_PASSIVE_STATES = 20;
 
 export const useGameStore = defineStore('golden_finger_game', () => {
   const settingsStore = useSettingsStore();
@@ -37,14 +40,28 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   const generating = ref(false);
   const shopGenerating = ref(false);
   const judging = ref(false);
+  const trackingStates = ref(false);
+  /** 后台维护失败退避楼数（防 API 持续故障时每楼重试轰炸） */
+  const MAINTENANCE_RETRY_COOLDOWN = 3;
+  const maintenanceCooldown = ref(0);
 
-  /** reload 换入新聊天状态时抑制 watch 落盘（数据本来就是从元数据读的） */
+
+  /** reload 换入新聊天状态时抑制回写（数据本来就是从元数据读的）。注意 watch 是 pre-flush 异步触发，
+   *  在 reload 里同步复位标志无效（回调执行时永远晚于复位）——标志由 watch 回调自身消费 */
   let suppressPersist = false;
 
   function readMetadata(): GameState {
     const metadata = window.SillyTavern?.getContext?.()?.chatMetadata as Record<string, unknown> | undefined;
+    const raw = metadata?.[STATE_FIELD];
+    // 旧版判定/状态计数器几经合并后已随「每轮即时维护」节奏整体移除：validateInplace 会把原对象就地回写，
+    // 移出 schema 的旧键必须先剥掉，否则一直残留并被 deep watch 回写进存档
+    if (raw && typeof raw === 'object') {
+      for (const key of ['stateMsgCounter', 'judgeMsgCounter', 'maintenanceMsgCounter']) {
+        delete (raw as Record<string, unknown>)[key];
+      }
+    }
     try {
-      return validateInplace(GameState, metadata?.[STATE_FIELD] ?? {});
+      return validateInplace(GameState, raw ?? {});
     } catch (error) {
       // 脏档（如被旧 bug 写超限的数据）不能让扩展整个挂掉：报错留档后空状态重建，原数据仍在聊天文件里可找回
       console.error('[GoldenFinger] 游玩状态校验失败，已重置为本聊天空档', error);
@@ -65,9 +82,12 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   watch(
     state,
     () => {
-      if (!suppressPersist) {
-        persist();
+      if (suppressPersist) {
+        // reload 后的首次回调即由状态替换触发：消费标志、跳过本次回写
+        suppressPersist = false;
+        return;
       }
+      persist();
     },
     { deep: true },
   );
@@ -77,8 +97,10 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     suppressPersist = true;
     try {
       state.value = readMetadata();
-    } finally {
+    } catch (error) {
+      // 重载失败没有新状态入位：别让残留标志吞掉下一次真实变更的回写
       suppressPersist = false;
+      throw error;
     }
   }
 
@@ -98,6 +120,14 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   const unlockedSkills = computed(() =>
     (activeSystem.value?.skills ?? []).filter(skill => state.value.level >= skill.unlockLevel),
   );
+
+  // 自定义系统编辑改货币名后同步快照：生成契约用 system.currencyName、结算比对用 state.currencyName，
+  // 不同步会让新货币奖励掉进背包（activateSystem 只在绑定时快照一次；旧奖励项名不改写，属一次性损耗）
+  watch(activeSystem, system => {
+    if (system && state.value.currencyName !== system.currencyName) {
+      state.value.currencyName = system.currencyName;
+    }
+  });
 
   /** 当前聊天文件标识（单聊=角色当前聊天名、群聊=群 chat_id，st-context.js 已核实）：在途请求落账前校验，防写进切走后的新聊天 */
   function currentChatId(): string {
@@ -193,20 +223,30 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     return state.value.msgCounter >= settings.autoIssueInterval;
   }
 
-  /** AI 回复计数；达到自动判定条件时返回 true（由调用方触发 judgeTasks） */
-  function noteAutoJudge(): boolean {
+  /** AI 回复驱动的后台维护调度（每轮即时）：判定需开自动判定且有进行中任务，状态需开追踪；双开合并为一次请求 */
+  function noteMaintenance(): MaintenanceSections | null {
     const { settings } = settingsStore;
-    if (!settings.enabled || !settings.autoJudge || !state.value.activeSystemId) {
-      return false;
+    if (!settings.enabled || !state.value.activeSystemId) {
+      return null;
     }
-    if (judging.value) {
-      return false;
+    if (judging.value || trackingStates.value) {
+      return null; // 上一次维护还在进行中：本轮不叠加触发
     }
-    if (activeTasks.value.length === 0) {
-      return false;
+    if (maintenanceCooldown.value > 0) {
+      maintenanceCooldown.value -= 1; // 失败退避：冷却期不发请求，按楼数递减
+      return null;
     }
-    state.value.judgeMsgCounter += 1;
-    return state.value.judgeMsgCounter >= settings.autoJudgeInterval;
+    const judge = settings.autoJudge && activeTasks.value.length > 0;
+    const states = settings.passiveStateTracking;
+    if (!judge && !states) {
+      return null;
+    }
+    return { judge, states };
+  }
+
+  /** 后台维护失败退避：跳过 N 楼再恢复每轮节奏，防 API 持续故障时每楼重试轰炸（内存态，重启/切聊天重置无妨） */
+  function onMaintenanceFailed(): void {
+    maintenanceCooldown.value = MAINTENANCE_RETRY_COOLDOWN;
   }
 
   /** 自动发布失败退避：清零计数，重新计满间隔楼数再试（避免 API 持续故障时每楼重试轰炸） */
@@ -214,16 +254,12 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     state.value.msgCounter = 0;
   }
 
-  /** 自动判定失败退避：同 onAutoIssueFailed */
-  function onAutoJudgeFailed(): void {
-    state.value.judgeMsgCounter = 0;
-  }
-
   /**
    * 设置任务状态并结算。
    * 完成来源：剧情 AI 判定标记 / 独立判定 API / 商店「自动完成」物品。
    * 失败来源：判定标记、独立判定 API、任务超时（source='timeout'）——失败都来自任务生成时写死的条件
    * （deadline 或 AI 判定），不由玩家手动触发；玩家面板「放弃」是中性「作废」（status='voided'），不计失败、无惩罚。
+   * 失败惩罚对所有失败来源通用（failPunishmentEnabled 扣 rewards 里的负数项），关闭则奖励作废。
    * @returns 任务是否存在且为 active（判定标记解析依赖它做幂等）
    */
   function setTaskStatus(
@@ -243,17 +279,15 @@ export const useGameStore = defineStore('golden_finger_game', () => {
       // 作废：玩家放弃，中性处理——不计失败、不触发失败惩罚，仅从进行中移除
       log('system', t`任务 ${task.id}《${task.title}》作废，不计失败。`);
       toastr.info(t`任务「${task.title}」已作废，不计失败`, t`金手指系统`);
-    } else if (source === 'timeout') {
-      // 超时失败：按设置决定是否把负数奖励当作惩罚扣减
-      if (settingsStore.settings.failPunishmentEnabled) {
-        applyPunishment(task);
-      } else {
-        log('system', t`任务 ${task.id}《${task.title}》超时失败，奖励作废。`);
-        toastr.warning(t`任务「${task.title}」超时失败，奖励作废`, t`金手指系统`);
-      }
     } else {
-      log('system', t`任务 ${task.id}《${task.title}》判定失败，奖励作废。`);
-      toastr.warning(t`任务「${task.title}」判定失败`, t`金手指系统`);
+      // 失败结算（来源：正文标记 / 独立判定 API / 超时）：失败惩罚对所有来源通用，关闭则奖励作废
+      const reason = source === 'timeout' ? t`超时失败` : t`判定失败`;
+      if (settingsStore.settings.failPunishmentEnabled) {
+        applyPunishment(task, reason);
+      } else {
+        log('system', t`任务 ${task.id}《${task.title}》${reason}，奖励作废。`);
+        toastr.warning(t`任务「${task.title}」${reason}，奖励作废`, t`金手指系统`);
+      }
     }
     pruneTasks();
     return true;
@@ -272,8 +306,8 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   }
 
   /** 执行失败惩罚：只扣减 rewards 里的负数项（货币入 points、物品从背包扣减）。背包没有该物品时无可扣，跳过。
-   *  无论是否有惩罚可扣，都会给出超时失败反馈（避免开启惩罚后无负数奖励时静默）。 */
-  function applyPunishment(task: Task): void {
+   *  无论是否有惩罚可扣，都会给出失败反馈（避免开启惩罚后无负数奖励时静默）。 */
+  function applyPunishment(task: Task, reason: string): void {
     const s = state.value;
     const texts: string[] = [];
     for (const reward of task.rewards) {
@@ -281,7 +315,8 @@ export const useGameStore = defineStore('golden_finger_game', () => {
         continue;
       }
       if (reward.name === s.currencyName) {
-        s.points += reward.amount;
+        // 货币与背包口径一致：余额不足时钳到 0，不产生负债
+        s.points = Math.max(0, s.points + reward.amount);
       } else {
         const item = s.inventory.find(candidate => candidate.name === reward.name);
         if (item) {
@@ -292,16 +327,20 @@ export const useGameStore = defineStore('golden_finger_game', () => {
       texts.push(`${reward.name}×${reward.amount}`);
     }
     if (texts.length > 0) {
-      log('system', t`任务 ${task.id}《${task.title}》超时失败，惩罚扣减：${texts.join('、')}`);
-      toastr.warning(t`任务「${task.title}」超时失败，惩罚扣减：${texts.join('、')}`, t`金手指系统`);
+      log('system', t`任务 ${task.id}《${task.title}》${reason}，惩罚扣减：${texts.join('、')}`);
+      toastr.warning(t`任务「${task.title}」${reason}，惩罚扣减：${texts.join('、')}`, t`金手指系统`);
     } else {
-      log('system', t`任务 ${task.id}《${task.title}》超时失败，奖励作废。`);
-      toastr.warning(t`任务「${task.title}」超时失败，奖励作废`, t`金手指系统`);
+      log('system', t`任务 ${task.id}《${task.title}》${reason}，奖励作废。`);
+      toastr.warning(t`任务「${task.title}」${reason}，奖励作废`, t`金手指系统`);
     }
   }
 
   /** 扫描进行中任务，把逾期的判为失败（同步、轻量；挂在 MESSAGE_RECEIVED/CHAT_CHANGED 上） */
   function checkTaskDeadlines(): void {
+    // 总开关关闭 = 自动化全部静默：超时判失败也停（否则「关闭」期间任务仍会被自动判死），仅保留手动结算
+    if (!settingsStore.settings.enabled) {
+      return;
+    }
     if (!settingsStore.settings.taskTimeoutEnabled) {
       return;
     }
@@ -389,7 +428,8 @@ export const useGameStore = defineStore('golden_finger_game', () => {
         gainTexts.push(t`每日签到达成（连续 ${s.signIn.streak} 天）：${reward.name}×${reward.amount}`);
       }
       if (reward.name === s.currencyName) {
-        s.points += reward.amount;
+        // 负数奖励项（罚没条款）不把货币扣成负数，与背包/惩罚扣减口径一致
+        s.points = Math.max(0, s.points + reward.amount);
       } else {
         const item = s.inventory.find(candidate => candidate.name === reward.name);
         if (item) {
@@ -454,23 +494,18 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     shopGenerating.value = true;
     const chatId = currentChatId();
     try {
-      // 系统通用批次必须成功；角色专属批次可选，失败时保留系统货并告警（不整体翻车）
-      const characterPromise = settingsStore.settings.characterShopEnabled
-        ? generateCharacterShelf(system, state.value, settingsStore.settings).catch(error => {
-            console.warn('[GoldenFinger] 角色专属货架生成失败，已跳过', error);
-            return [] as ShopItem[];
-          })
-        : (Promise.resolve([]) as Promise<ShopItem[]>);
-      const [systemItems, characterItems] = await Promise.all([
-        generateShopShelf(system, state.value, settingsStore.settings),
-        characterPromise,
-      ]);
+      // 单请求双区货架：系统通用区失败整体翻车（保留旧货架）；角色专属区缺失/失败已降级为空数组，不整体翻车
+      const { system: systemItems, character: characterItems } = await generateShopShelf(
+        system,
+        state.value,
+        settingsStore.settings,
+      );
       if (chatId !== currentChatId()) {
         // 等待期间已切换聊天：旧货架/扣费留在旧聊天数据里，这里不写新聊天
         console.warn('[GoldenFinger] 货架生成期间切换了聊天，本批货架已丢弃');
         return;
       }
-      // 合并去重（同名保留系统批次优先），总量不超过 12
+      // 合并去重（同名保留系统区优先），总量不超过 12
       const seen = new Set<string>();
       const items = [...systemItems, ...characterItems]
         .filter(item => {
@@ -655,39 +690,228 @@ export const useGameStore = defineStore('golden_finger_game', () => {
 
   // #endregion
 
-  // #region 任务独立判定
+  // #region 后台维护（判定 + 状态提取合并请求）
 
-  /** 调独立判定 API 结算进行中任务（不依赖主 AI 写标记）；返回实际结算的任务条数。 */
-  async function judgeTasks(): Promise<number> {
+  /**
+   * 后台维护：一次请求同时做任务裁定与被动状态提取（区块由开关与场景决定）。
+   * 两区解析互相独立——单区失败只记入 errors，不拖垮另一区；失败（含单区解析失败）由调用方
+   * 走 onMaintenanceFailed 退避（每轮即时节奏下防止每楼重试轰炸）。整请求失败（API/切聊天）抛错。
+   */
+  async function runMaintenance(
+    sections: MaintenanceSections,
+  ): Promise<{ settled: number; changed: number; errors: string[] }> {
     const system = activeSystem.value;
     if (!system) {
       throw new Error(t`尚未绑定系统`);
     }
-    if (judging.value) {
-      throw new Error(t`上一个判定还在进行中`);
+    if (judging.value || trackingStates.value) {
+      throw new Error(t`上一次后台维护还在进行中`);
     }
+    judging.value = sections.judge;
+    trackingStates.value = sections.states;
+    const chatId = currentChatId();
+    try {
+      const outcome = await requestMaintenance(system, state.value, settingsStore.settings, sections);
+      if (chatId !== currentChatId()) {
+        // 等待期间已切换聊天：结果针对旧聊天，不能落进新聊天
+        throw new Error(t`维护期间已切换聊天，结果未保存`);
+      }
+      const errors: string[] = [];
+      let settled = 0;
+      let changed = 0;
+      if (sections.judge) {
+        if (outcome.verdicts) {
+          for (const verdict of outcome.verdicts) {
+            if (setTaskStatus(verdict.id, verdict.status)) {
+              settled += 1;
+            }
+          }
+        } else {
+          errors.push(t`AI 没有返回有效的判定结果，请重试`);
+        }
+      }
+      if (sections.states) {
+        if (outcome.stateOps) {
+          changed = applyStateOps(outcome.stateOps);
+        } else {
+          errors.push(t`AI 没有返回有效的状态清单结果，请重试`);
+        }
+      }
+      return { settled, changed, errors };
+    } finally {
+      judging.value = false;
+      trackingStates.value = false;
+    }
+  }
+
+  /** 落账状态 ops（add 同名降级为更新/update 按 id/remove 按 id）；返回实际变化条数。切聊天校验由调用方负责 */
+  function applyStateOps(ops: StateOp[]): number {
+    const s = state.value;
+    const summary: string[] = [];
+    for (const op of ops) {
+      if (op.op === 'add') {
+        const name = op.name.trim();
+        const existing = s.passiveStates.find(item => item.name === name);
+        if (existing) {
+          // 同名降级为更新：AI 措辞漂移不应在清单里堆重复条目；值没变就不计变化
+          if (
+            existing.intensity !== op.intensity ||
+            existing.kind !== op.kind ||
+            (op.note && existing.note !== op.note) ||
+            existing.remainingFloors !== op.durationFloors
+          ) {
+            existing.intensity = op.intensity;
+            existing.kind = op.kind;
+            if (op.note) {
+              existing.note = op.note;
+            }
+            existing.remainingFloors = op.durationFloors;
+            summary.push(t`更新「${existing.name}」`);
+          }
+          continue;
+        }
+        if (s.passiveStates.length >= MAX_PASSIVE_STATES) {
+          continue;
+        }
+        s.stateCounter += 1;
+        s.passiveStates.push({
+          id: `S${String(s.stateCounter).padStart(3, '0')}`,
+          name,
+          kind: op.kind,
+          intensity: op.intensity,
+          note: op.note,
+          remainingFloors: op.durationFloors,
+          source: 'auto',
+        });
+        summary.push(t`新增「${name}」`);
+        continue;
+      }
+      const target = s.passiveStates.find(item => item.id === op.id);
+      if (!target) {
+        continue;
+      }
+      if (op.op === 'update') {
+        let touched = false;
+        if (op.name !== undefined && op.name !== target.name) {
+          target.name = op.name;
+          touched = true;
+        }
+        if (op.intensity !== undefined && op.intensity !== target.intensity) {
+          target.intensity = op.intensity;
+          touched = true;
+        }
+        if (op.note !== undefined && op.note !== target.note) {
+          target.note = op.note;
+          touched = true;
+        }
+        if (op.durationFloors !== undefined && op.durationFloors !== target.remainingFloors) {
+          target.remainingFloors = op.durationFloors;
+          touched = true;
+        }
+        if (touched) {
+          summary.push(t`更新「${target.name}」`);
+        }
+      } else {
+        s.passiveStates = s.passiveStates.filter(item => item.id !== op.id);
+        summary.push(op.reason ? t`移除「${target.name}」（${op.reason}）` : t`移除「${target.name}」`);
+      }
+    }
+    if (summary.length > 0) {
+      log('system', t`状态追踪：${summary.join('、')}`);
+    }
+    return summary.length;
+  }
+
+  /** 调独立判定 API 结算进行中任务（不依赖主 AI 写标记）；返回实际结算的任务条数。手动按钮专用：单区请求 */
+  async function judgeTasks(): Promise<number> {
     if (activeTasks.value.length === 0) {
       return 0;
     }
-    judging.value = true;
-    const chatId = currentChatId();
-    try {
-      const verdicts = await adjudicateTasks(system, state.value, settingsStore.settings);
-      if (chatId !== currentChatId()) {
-        // 等待期间已切换聊天：裁决对象是旧聊天的任务，不能结算进新聊天
-        throw new Error(t`判定期间已切换聊天，结果未保存`);
-      }
-      let settled = 0;
-      for (const verdict of verdicts) {
-        if (setTaskStatus(verdict.id, verdict.status)) {
-          settled += 1;
-        }
-      }
-      state.value.judgeMsgCounter = 0;
-      return settled;
-    } finally {
-      judging.value = false;
+    const { settled, errors } = await runMaintenance({ judge: true, states: false });
+    if (errors.length > 0) {
+      throw new Error(errors[0]);
     }
+    return settled;
+  }
+
+  // #endregion
+
+  // #region 被动状态追踪
+
+  /** 手动状态提取（状态页「立即提取」）：单区维护，不依赖自动节奏；返回实际变化条数 */
+  async function extractStates(): Promise<number> {
+    const { changed, errors } = await runMaintenance({ judge: false, states: true });
+    if (errors.length > 0) {
+      throw new Error(errors[0]);
+    }
+    return changed;
+  }
+
+  /** 被动状态自动消退倒计时：每个非 quiet AI 回复扣 1，归零移除（同步轻量）；提取器仍可在剧情明确解除时提前移除 */
+  function tickStateFloors(): void {
+    if (!settingsStore.settings.passiveStateTracking) {
+      return;
+    }
+    const s = state.value;
+    if (!s.passiveStates.some(item => item.remainingFloors !== null)) {
+      return;
+    }
+    const expired: string[] = [];
+    for (const item of s.passiveStates) {
+      if (item.remainingFloors === null) {
+        continue;
+      }
+      item.remainingFloors -= 1;
+      if (item.remainingFloors <= 0) {
+        expired.push(item.name);
+      }
+    }
+    if (expired.length > 0) {
+      s.passiveStates = s.passiveStates.filter(item => item.remainingFloors !== null && item.remainingFloors > 0);
+      log('system', t`状态自行消退：${expired.join('、')}`);
+    }
+  }
+
+  /** 手动新增一条被动状态（玩家纠偏入口）：同名合并为更新强度/备注 */
+  function addPassiveState(name: string, kind: PassiveStateKind, intensity: number, note = ''): void {
+    const clean = name.trim().slice(0, 24);
+    if (!clean) {
+      return;
+    }
+    const existing = state.value.passiveStates.find(item => item.name === clean);
+    if (existing) {
+      existing.intensity = _.clamp(Math.round(intensity), 1, 3);
+      if (note.trim()) {
+        existing.note = note.trim().slice(0, 60);
+      }
+      return;
+    }
+    if (state.value.passiveStates.length >= MAX_PASSIVE_STATES) {
+      toastr.warning(t`状态记录已达上限，无法新增`, t`金手指系统`);
+      return;
+    }
+    const s = state.value;
+    s.stateCounter += 1;
+    s.passiveStates.push({
+      id: `S${String(s.stateCounter).padStart(3, '0')}`,
+      name: clean,
+      kind,
+      intensity: _.clamp(Math.round(intensity), 1, 3),
+      note: note.trim().slice(0, 60),
+      remainingFloors: null,
+      source: 'manual',
+    });
+    log('system', t`手动记录状态「${clean}」`);
+  }
+
+  /** 手动移除一条被动状态 */
+  function removePassiveState(id: string): void {
+    const target = state.value.passiveStates.find(item => item.id === id);
+    if (!target) {
+      return;
+    }
+    state.value.passiveStates = state.value.passiveStates.filter(item => item.id !== id);
+    log('system', t`移除状态「${target.name}」`);
   }
 
   // #endregion
@@ -697,6 +921,7 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     generating,
     shopGenerating,
     judging,
+    trackingStates,
     activeSystem,
     activeTasks,
     closedTasks,
@@ -708,13 +933,18 @@ export const useGameStore = defineStore('golden_finger_game', () => {
     deactivateSystem,
     issueTasks,
     noteAutoIssue,
-    noteAutoJudge,
+    noteMaintenance,
+    runMaintenance,
+    onMaintenanceFailed,
     onAutoIssueFailed,
-    onAutoJudgeFailed,
     setTaskStatus,
     checkTaskDeadlines,
     useItem,
     judgeTasks,
+    extractStates,
+    tickStateFloors,
+    addPassiveState,
+    removePassiveState,
     resetState,
     clearLog,
     ensureShop,

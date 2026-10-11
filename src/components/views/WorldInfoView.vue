@@ -96,7 +96,7 @@
               class="gf-wi-entry"
               :class="{ 'gf-wi-entry--disabled': !isEntryOn(book.name, entry) }"
             >
-              <span class="gf-wi-entry-state">{{ entryStateIcon(entry) }}</span>
+              <i class="gf-wi-entry-state fa-solid" :class="entryStateIcon(entry)"></i>
               <span class="gf-wi-entry-name">{{ entry.comment || entry.key?.[0] || `#${entry.uid}` }}</span>
               <input
                 type="checkbox"
@@ -383,10 +383,11 @@ function sourceLabel(source: WorldBookSource): string {
   return t`聊天`;
 }
 
+/** 条目类型图标：常驻=蓝钉、向量化=链、普通=绿点（与全局排除/启停徽章同一套 FA 体系） */
 function entryStateIcon(entry: WorldBookEntry): string {
-  if (entry.constant) return '🔵';
-  if (entry.vectorized) return '🔗';
-  return '🟢';
+  if (entry.constant) return 'fa-thumbtack gf-wi-entry-state--constant';
+  if (entry.vectorized) return 'fa-link gf-wi-entry-state--vectorized';
+  return 'fa-circle gf-wi-entry-state--normal';
 }
 </script>
 
@@ -587,10 +588,26 @@ function entryStateIcon(entry: WorldBookEntry): string {
 }
 
 .gf-wi-entry-state {
-  font-size: 12px;
+  font-size: 10px;
   flex: none;
   width: 14px;
   text-align: center;
+}
+
+.gf-wi-entry-state--constant {
+  color: var(--gf-rarity-2);
+}
+
+.gf-wi-entry-state--vectorized {
+  color: var(--gf-rarity-3);
+}
+
+.gf-wi-entry-state--normal {
+  color: var(--gf-ok);
+}
+
+.gf-wi-entry--disabled .gf-wi-entry-state {
+  opacity: 0.5;
 }
 
 .gf-wi-entry-name {

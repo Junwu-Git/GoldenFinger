@@ -1,4 +1,4 @@
-import { useSettingsStore } from '@/store/settings';
+import { togglePanel } from '@/core/ui-state';
 
 const MAX_POLLS = 30;
 const POLL_INTERVAL = 200;
@@ -28,14 +28,13 @@ function createWandEntry($menu: JQuery<HTMLElement>): void {
   }
   const $container = $('<div id="golden_finger_wand_container" class="extension_container">').appendTo($menu);
   const $entry = $(`
-    <div class="list-group-item flex-container flexGap5">
-      <div class="fa-solid fa-microchip extensionsMenuExtensionButton"></div>
+    <div class="list-group-item flex-container flexGap5" data-gf-panel-toggle>
+      <div class="fa-solid fa-hand-sparkles extensionsMenuExtensionButton"></div>
       <span>${t`金手指`}</span>
     </div>
   `);
   $entry.on('click', () => {
-    const settings = useSettingsStore().settings;
-    settings.panelVisible = !settings.panelVisible;
+    togglePanel();
     $('#extensionsMenu').hide();
   });
   $container.append($entry);

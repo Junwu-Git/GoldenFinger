@@ -1,5 +1,28 @@
 <template>
   <div class="gf-view">
+    <!-- 界面显示（悬浮球 / 聊天内状态条两个入口的开关） -->
+    <GfSectionCard :title="t`界面显示`" icon="fa-solid fa-display">
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.bubbleEnabled" type="checkbox" />
+          <span>{{ t`悬浮球入口` }}</span>
+        </label>
+      </div>
+      <div class="gf-setting-desc">{{ t`在酒馆界面显示可拖拽的悬浮球，点按开合面板。` }}</div>
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.chatStateHud" type="checkbox" />
+          <span>{{ t`聊天内显示身心状态` }}</span>
+        </label>
+      </div>
+      <div class="gf-setting-desc">{{ t`有被动状态时，聊天区顶部悬浮一条状态条，点击直达状态页。` }}</div>
+    </GfSectionCard>
+
+    <!-- 自定义系统（创建/编辑/导入导出，原扩展抽屉的唯一管理入口已并入面板） -->
+    <GfSectionCard :title="t`自定义系统（${settings.customSystems.length}）`" icon="fa-solid fa-wand-magic-sparkles">
+      <CustomSystemManager />
+    </GfSectionCard>
+
     <!-- 任务生成 API（提示词/世界书/正则等通用配置已拆到「配置」页） -->
     <GfSectionCard :title="t`任务生成 API`" icon="fa-solid fa-plug">
       <label class="gf-radio-row">
@@ -84,30 +107,17 @@
       <div class="gf-setting-desc">{{ t`每达到条数上限且任务未满时，系统会异步调用 API 自动发布新任务。` }}</div>
     </GfSectionCard>
 
-    <!-- 自动判定 -->
-    <GfSectionCard v-model:open="judgeOpen" :title="t`自动判定任务`" icon="fa-solid fa-scale-balanced">
+    <!-- 任务结算：自动判定 + 任务时限 + 失败惩罚（时限是判定失效时的本地兜底，惩罚对所有失败来源通用） -->
+    <GfSectionCard v-model:open="settleOpen" :title="t`任务结算`" icon="fa-solid fa-scale-balanced">
       <div class="gf-setting-row">
         <label class="checkbox_label gf-flex">
           <input v-model="settings.autoJudge" type="checkbox" />
-          <span>{{ t`开启` }}</span>
+          <span>{{ t`自动判定任务` }}</span>
         </label>
-        <input
-          v-model.number="settings.autoJudgeInterval"
-          class="text_input gf-number"
-          type="number"
-          min="1"
-          max="50"
-          :disabled="!settings.autoJudge"
-          @change="clampSetting('autoJudgeInterval', 1, 50, 3)"
-        />
       </div>
       <div class="gf-setting-desc">
-        {{ t`每达到条数上限且有进行中任务时，系统会异步调用独立判定 API 结算任务，不依赖主 AI 在正文写判定标记。` }}
+        {{ t`每条 AI 回复后，系统会异步调用判定 API 结算进行中任务，不依赖主 AI 在正文写判定标记；任务带时限时，判定会结合剩余时间提前裁定。与状态提取同轮时合并为一次请求。` }}
       </div>
-    </GfSectionCard>
-
-    <!-- 任务时限与失败惩罚 -->
-    <GfSectionCard v-model:open="timeoutOpen" :title="t`任务时限与失败惩罚`" icon="fa-solid fa-hourglass-half">
       <div class="gf-setting-row">
         <label class="checkbox_label gf-flex">
           <input v-model="settings.taskTimeoutEnabled" type="checkbox" />
@@ -125,13 +135,36 @@
       </div>
       <div class="gf-setting-row">
         <label class="checkbox_label gf-flex">
-          <input v-model="settings.failPunishmentEnabled" type="checkbox" :disabled="!settings.taskTimeoutEnabled" />
-          <span>{{ t`超时失败扣减惩罚（奖励里的负数项）` }}</span>
+          <input v-model="settings.failPunishmentEnabled" type="checkbox" />
+          <span>{{ t`失败惩罚（扣奖励里的负数项，所有失败来源通用）` }}</span>
         </label>
       </div>
       <div class="gf-setting-desc">
-        {{ t`任务逾期会自动结算为失败；开启惩罚后，会把任务奖励里的负数项（货币/物品）作为惩罚扣减。` }}
+        {{ t`任务逾期会自动结算为失败，也是自动判定关闭或失败时的本地兜底；开启惩罚后，任何来源的失败都会把奖励里的负数项（货币/物品）作为惩罚扣减。` }}
       </div>
+    </GfSectionCard>
+
+    <!-- 被动状态追踪 -->
+    <GfSectionCard v-model:open="stateOpen" :title="t`被动状态追踪`" icon="fa-solid fa-heart-pulse">
+      <div class="gf-setting-row">
+        <label class="checkbox_label gf-flex">
+          <input v-model="settings.passiveStateTracking" type="checkbox" />
+          <span>{{ t`开启` }}</span>
+        </label>
+      </div>
+      <div class="gf-setting-desc">
+        {{ t`每条 AI 回复后即时从最近剧情提取宿主的被动身心状态（受伤、寒冷、生病、生理反应等），及时更新并持续注入给正文 AI 与任务生成；与自动判定同轮触发时合并为一次请求。建议配置副 API 小模型；状态页可手动增删与立即提取。` }}
+      </div>
+    </GfSectionCard>
+
+    <!-- 危险操作（只影响本聊天的游玩存档，全局设置不受影响） -->
+    <GfSectionCard v-model:open="dangerOpen" :title="t`危险操作`" icon="fa-solid fa-triangle-exclamation">
+      <div class="gf-setting-row">
+        <button class="menu_button gf-danger" @click="resetChatState">
+          <i class="fa-solid fa-trash-can"></i>&nbsp;{{ t`清空本聊天的金手指数据` }}
+        </button>
+      </div>
+      <div class="gf-setting-desc">{{ t`清空等级、货币、任务、背包与日志；全局设置与其他聊天不受影响。` }}</div>
     </GfSectionCard>
   </div>
 </template>
@@ -141,16 +174,34 @@ import toastr from 'toastr';
 import { storeToRefs } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import GfSectionCard from '@/components/shared/GfSectionCard.vue';
+import CustomSystemManager from '@/components/shared/CustomSystemManager.vue';
 import { normalizeApiUrl } from '@/core/api-client';
 import { API_PRESETS, presetForApiUrl } from '@/core/api-presets';
+import { useGameStore } from '@/store/game';
 import { useSettingsStore } from '@/store/settings';
 
 const settingsStore = useSettingsStore();
 const { settings } = storeToRefs(settingsStore);
+const game = useGameStore();
 
 const autoOpen = ref(false);
-const judgeOpen = ref(false);
-const timeoutOpen = ref(false);
+const settleOpen = ref(false);
+const stateOpen = ref(false);
+const dangerOpen = ref(false);
+
+async function resetChatState(): Promise<void> {
+  const context = window.SillyTavern?.getContext?.();
+  const result = await context?.callGenericPopup?.(
+    t`确定清空本聊天的全部金手指数据（等级、货币、任务、背包、日志）？`,
+    context.POPUP_TYPE.CONFIRM,
+  );
+  // 安全方向：弹窗不可用或未明确确认都不执行（防 context 缺失时 undefined === undefined 误判为确认）
+  if (!context?.callGenericPopup || result !== context.POPUP_RESULT.AFFIRMATIVE) {
+    return;
+  }
+  game.resetState();
+  toastr.success(t`已清空`, t`金手指系统`);
+}
 
 // #region 任务生成 API（草稿编辑，保存才生效）
 
@@ -194,7 +245,7 @@ function clampNumberInput(value: unknown, min: number, max: number, fallback: nu
 
 /** 直接绑定 store 的数字框在 change 时清洗（schema 的 catch 只在下次加载兜底，当次会话仍是脏值） */
 function clampSetting(
-  key: 'autoIssueInterval' | 'autoJudgeInterval' | 'taskTimeoutMinutes',
+  key: 'autoIssueInterval' | 'taskTimeoutMinutes',
   min: number,
   max: number,
   fallback: number,

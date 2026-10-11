@@ -33,9 +33,13 @@ defineSlots<{
 
 <style scoped>
 .gf-section-card {
-  border: 1px solid var(--gf-border);
+  border: 1px solid var(--gf-border-strong);
   border-radius: var(--gf-radius-md);
   background: var(--gf-bg-1);
+  /* choice 式卡片浮起：轻投影让卡片从面板底上浮起，上缘磨砂受光线补层次 */
+  box-shadow:
+    var(--gf-shadow-sm),
+    inset 0 1px 0 var(--gf-frost-line);
   overflow: hidden;
 }
 
@@ -55,7 +59,7 @@ defineSlots<{
 }
 
 .gf-section-head:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--gf-bg-hover);
 }
 
 .gf-section-chevron {

@@ -1,113 +1,69 @@
-import { substituteParams } from '@sillytavern/script';
 import { z } from 'zod';
-import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
-import { buildCharSlots, buildPersonaContext } from '@/core/context-builder';
+import { requestTaskCompletion } from '@/core/api-client';
 import { parseJsonFromText } from '@/core/json';
-import { buildVars, fillVars } from '@/core/prompt-vars';
 import { composeShopMessages } from '@/core/task-generator';
 import { type AttributeFx, type GameState, type ItemEffect, ShopItem, type SystemDef } from '@/type/game';
 import type { Settings } from '@/type/settings';
 
-/** AI 返回的商品数组契约（id 由本地生成，不在提示词里要求） */
-const SHELF_SCHEMA = z
-  .array(ShopItem.omit({ id: true }))
-  .min(1)
-  .max(12);
+/** AI 返回的商品元素契约（id/category 由本地按所在区赋值，不在提示词里要求） */
+const ITEM_SCHEMA = ShopItem.omit({ id: true, category: true });
+
+/** 单请求双区货架契约：system=系统通用批；character=角色专属批（可缺省，非法时整键降级为缺失，不拖垮 system 区）。
+ *  system 上限放宽到 14：模型把两批都塞进 system 键时仍可解析，由 store 合并钳量 */
+const SHELF_OBJECT_SCHEMA = z.object({
+  system: z.array(ITEM_SCHEMA).min(1).max(14),
+  character: z.array(ITEM_SCHEMA).max(6).nullish().catch(undefined),
+});
+
+/** 兜底契约：模型沿用旧版裸数组输出（或无视对象要求）时整批按系统通用货处理 */
+const SHELF_ARRAY_SCHEMA = z.array(ITEM_SCHEMA).min(1).max(14);
 
 const EFFECT_TYPES = ['points', 'exp', 'complete_task', 'attribute', 'none'] as const;
 const ITEM_KINDS = ['item', 'skill'] as const;
 
+/** 一批货架：双区商品，category 已按所在区赋值 */
+export interface ShopShelf {
+  system: ShopItem[];
+  character: ShopItem[];
+}
+
 /**
- * 通过 API 异步生成一批「系统通用」货架商品（纯函数：不碰状态，由 store 落账）。
- * 请求消息由商店生成域模块组装（choice 式）；不针对当前角色细节，只按系统风格。
+ * 通过 API 异步生成一批货架（纯函数：不碰状态，由 store 落账）。
+ * 单请求双区：system 区 10 件系统通用货必出；character 区 3~4 件角色专属货按 characterShopEnabled
+ * 经 {{characterShelf}} 变量下发，缺失/失败仅告警（返回空数组），不整体翻车。
  */
 export async function generateShopShelf(
   system: SystemDef,
   gameState: GameState,
   settings: Settings,
-): Promise<ShopItem[]> {
+): Promise<ShopShelf> {
   const messages = await composeShopMessages(system, gameState, settings);
   const raw = await requestTaskCompletion({
     messages,
     mainResponseLength: settings.api.maxTokens,
   });
 
-  const parsed = parseJsonFromText(raw, SHELF_SCHEMA, '[');
-  if (!parsed) {
-    console.error('[GoldenFinger] 货架生成原始输出：', raw);
-    throw new Error(t`AI 没有返回有效的商品 JSON，请重试`);
+  const merged = parseJsonFromText(raw, SHELF_OBJECT_SCHEMA, '{');
+  if (merged) {
+    const character = (merged.character ?? []).map((item, index) => normalizeItem(item, index, 'character'));
+    if (settings.characterShopEnabled && character.length === 0) {
+      console.warn('[GoldenFinger] 合并货架缺少有效的角色专属区（character），本批仅上系统通用货：', raw);
+    }
+    return {
+      system: merged.system.map((item, index) => normalizeItem(item, index, 'system')),
+      character,
+    };
   }
-  return parsed.map((item, index) => normalizeItem(item, index, 'system'));
-}
-
-/**
- * 通过 API 异步生成一批「角色专属」货架商品（纯函数）：固定一条聚焦当前角色卡/女主设定的提示词，
- * 产出对她量身定制的技能、身体改造与专属道具。失败抛错，由 store 决定保留旧货架。
- */
-export async function generateCharacterShelf(
-  system: SystemDef,
-  gameState: GameState,
-  settings: Settings,
-): Promise<ShopItem[]> {
-  const messages = composeCharacterShopMessages(system, gameState, settings);
-  const raw = await requestTaskCompletion({
-    messages,
-    mainResponseLength: settings.api.maxTokens,
-  });
-
-  const parsed = parseJsonFromText(raw, SHELF_SCHEMA, '[');
-  if (!parsed) {
-    console.error('[GoldenFinger] 角色货架生成原始输出：', raw);
-    throw new Error(t`AI 没有返回有效的商品 JSON，请重试`);
+  const legacy = parseJsonFromText(raw, SHELF_ARRAY_SCHEMA, '[');
+  if (legacy) {
+    console.warn('[GoldenFinger] 货架输出为裸数组（旧契约形态），已整体按系统通用货处理：', raw);
+    return { system: legacy.map((item, index) => normalizeItem(item, index, 'system')), character: [] };
   }
-  return parsed.map((item, index) => normalizeItem(item, index, 'character'));
+  console.error('[GoldenFinger] 货架生成原始输出：', raw);
+  throw new Error(t`AI 没有返回有效的商品 JSON，请重试`);
 }
 
-/** 角色专属货架请求：system 定位 + 角色卡/女主设定，user 只写请求与契约（不参与正文角色扮演） */
-function composeCharacterShopMessages(system: SystemDef, gameState: GameState, settings: Settings): ChatMsg[] {
-  const vars = buildVars(system, gameState);
-  const fill = (template: string): string => substituteParams(fillVars(template, vars));
-
-  const charSlots = buildCharSlots(settings);
-  const personaBlock = buildPersonaContext();
-  const card = [charSlots.description, charSlots.personality, charSlots.scenario].filter(Boolean).join('\n\n');
-
-  const systemMsg = fill(
-    [
-      '你在一部互动小说中为绑定于主角{{user}}的「{{systemName}}」运营它的定制商店「{{shopName}}」。',
-      '这一次不卖店铺的通用货，只上一批专为当前女主角量身定制的货品：只对她有效、能增益她的技能、身体改造与特殊道具。',
-      '',
-      ...(personaBlock ? [personaBlock] : []),
-      '【女主角设定】',
-      card || '（未提供角色卡设定，请按系统的世界观自由发挥）',
-      '',
-      '【系统世界观】',
-      system.worldview || '（无）',
-      '【宿主长期目标】',
-      system.goal || '（无）',
-      '',
-      '货币名称（标价必须逐字使用）：{{currency}}。',
-    ].join('\n'),
-  );
-
-  const requestMsg = fill(
-    [
-      '请以「{{shopName}}」的口吻，结合上方女主角设定，上一批 3~4 件角色专属货品。',
-      '每件可以是：一个「技能」（kind 写 "skill"，宿主购买即习得）；一次「身体改造」（effect.type 写 "attribute"，使用后改变女主角的身体属性）；或一件只对她生效的特殊道具。',
-      '只输出 JSON 数组，每件字段：{"name","description","price","stock","rarity","kind","effect"}。',
-      '- 身体改造的 effect 示例：{"type":"attribute","attribute":{"target":"女主","attribute":"罩杯","amount":1,"unit":"档","tiers":["平坦","A","B","C","D","E","F"]}}',
-      '- 普通道具 effect 按 {"type":"points"|"exp"|"complete_task"|"none","amount":N}。',
-      '价格带与稀有度分布同店铺通用货；货品必须契合世界观、只对女主角有意义，不要重复通用商品。',
-    ].join('\n'),
-  );
-
-  return [
-    { role: 'system', content: systemMsg },
-    { role: 'user', content: requestMsg },
-  ];
-}
-
-function normalizeItem(item: Omit<ShopItem, 'id'>, index: number, category: 'system' | 'character'): ShopItem {
+function normalizeItem(item: Omit<ShopItem, 'id' | 'category'>, index: number, category: 'system' | 'character'): ShopItem {
   const kind = (ITEM_KINDS as readonly string[]).includes(String(item.kind)) ? (item.kind as ShopItem['kind']) : 'item';
   const type = (EFFECT_TYPES as readonly string[]).includes(item.effect?.type)
     ? (item.effect.type as ItemEffect['type'])
@@ -115,7 +71,7 @@ function normalizeItem(item: Omit<ShopItem, 'id'>, index: number, category: 'sys
   const attribute =
     type === 'attribute' && item.effect?.attribute ? normalizeAttribute(item.effect.attribute) : undefined;
   return {
-    // id 拼入批次来源：系统/角色两批是并行生成的，仅靠时间戳+下标会在同毫秒完成时撞 id
+    // id 拼入批次来源：换批都在同毫秒内完成过，仅靠时间戳+下标会撞 id
     id: `S${Date.now().toString(36)}_${category}_${index}`,
     name: item.name.trim().slice(0, 24) || t`无名商品`,
     description: item.description.trim().slice(0, 120),

@@ -31,12 +31,13 @@
           @click="activate(candidate)"
         >
           <div class="gf-system-icon">{{ candidate.icon }}</div>
+          <i v-if="candidate.id === system?.id" class="fa-solid fa-circle-check gf-system-current-mark"></i>
           <div class="gf-system-name">{{ candidate.name }}</div>
           <div class="gf-system-tagline">{{ candidate.tagline }}</div>
           <div class="gf-system-meta">{{ candidate.currencyName }} · {{ candidate.shopName }}</div>
         </button>
       </div>
-      <div class="gf-hint">{{ t`自定义系统在扩展设置里创建与编辑；重新绑定会重置本聊天数据。` }}</div>
+      <div class="gf-hint">{{ t`自定义系统在「设置」页创建与导入；重新绑定会重置本聊天数据。` }}</div>
     </div>
   </div>
 </template>

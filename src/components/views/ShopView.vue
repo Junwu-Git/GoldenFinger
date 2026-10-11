@@ -6,7 +6,7 @@
         <i class="fa-solid fa-store gf-shop-icon"></i>
         <span>{{ system?.shopName ?? t`系统商店` }}</span>
       </div>
-      <span class="gf-shop-balance">💰 {{ game.state.points }} {{ game.state.currencyName }}</span>
+      <span class="gf-shop-balance"><i class="fa-solid fa-coins"></i> {{ game.state.points }} {{ game.state.currencyName }}</span>
     </div>
 
     <!-- 未绑定：提示先去首页绑定 -->

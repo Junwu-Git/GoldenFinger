@@ -44,7 +44,7 @@ $(() => {
       }
     });
 
-    // AI 回复 → 判定标记结算（同步）+ 超时扫查（同步）+ 自动发布任务（脱钩）。
+    // AI 回复 → 判定标记结算（同步）+ 超时扫查（同步）+ 状态消退倒计时（同步）+ 自动发布/判定/状态提取（脱钩）。
     // ST 的 eventSource.emit 串行 await 监听器，把异步生成的 await 留在监听器里会推迟
     // MESSAGE_RECEIVED 之后的 CHARACTER_MESSAGE_RENDERED（酒馆助手楼层渲染挂在它上面）
     eventSource.on(event_types.MESSAGE_RECEIVED, (messageIndex: number, type: string) => {
@@ -62,6 +62,11 @@ $(() => {
         return;
       }
       try {
+        game.tickStateFloors();
+      } catch (error) {
+        console.error('[GoldenFinger] 状态消退倒计时失败', error);
+      }
+      try {
         if (game.noteAutoIssue()) {
           void game
             .issueTasks()
@@ -76,18 +81,31 @@ $(() => {
               toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
             });
         }
-        if (game.noteAutoJudge()) {
+        // 后台维护每轮即时执行：自动判定结算任务、状态提取身心状态（各自开关），双开合并为一次请求（共享楼层上下文）
+        const maintenance = game.noteMaintenance();
+        if (maintenance) {
           void game
-            .judgeTasks()
-            .then(settled => {
-              if (settled > 0) {
-                toastr.success(t`叮！系统自动判定结算了 ${settled} 个任务`, t`金手指系统`);
+            .runMaintenance(maintenance)
+            .then(({ settled, errors }) => {
+              // 状态每轮都可能变化且已写进日志页，自动路径不再弹 toast 防轰炸；判定结算保留「叮！」
+              const parts: string[] = [];
+              if (maintenance.judge && settled > 0) {
+                parts.push(t`后台判定结算了 ${settled} 个任务`);
+              }
+              for (const message of errors) {
+                toastr.error(message, t`金手指系统`);
+              }
+              if (parts.length > 0) {
+                toastr.info(t`叮！${parts.join('、')}`, t`金手指系统`);
+              }
+              // 单区解析失败也走退避：连续故障时按楼数冷却，避免每楼重试轰炸
+              if (errors.length > 0) {
+                game.onMaintenanceFailed();
               }
             })
             .catch((error: unknown) => {
-              console.error('[GoldenFinger] 自动判定失败', error);
-              // 失败退避：同自动发布
-              game.onAutoJudgeFailed();
+              console.error('[GoldenFinger] 后台维护失败', error);
+              game.onMaintenanceFailed();
               toastr.error(error instanceof Error ? error.message : String(error), t`金手指系统`);
             });
         }

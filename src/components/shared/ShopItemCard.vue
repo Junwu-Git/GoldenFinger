@@ -10,7 +10,9 @@
     </div>
     <div v-if="item.description" class="gf-shop-item-desc">{{ item.description }}</div>
     <div class="gf-shop-item-foot">
-      <span class="gf-price-pill" :class="{ poor: points < item.price }">💰 {{ item.price }}</span>
+      <span class="gf-price-pill" :class="{ poor: points < item.price }">
+        <i class="fa-solid fa-coins"></i> {{ item.price }}
+      </span>
       <span v-if="item.stock !== null" class="gf-stock" :class="{ out: item.stock <= 0 }">
         {{ item.stock <= 0 ? t`售罄` : t`剩 ${item.stock} 件` }}
       </span>

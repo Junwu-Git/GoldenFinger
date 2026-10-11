@@ -13,7 +13,7 @@
           class="gf-mini-btn gf-use-btn"
           @click="game.useItem(item.name)"
         >
-          <i class="fa-solid fa-hand-pointer"></i>&nbsp;{{ t`使用` }}
+          <i class="fa-solid fa-hand-pointer"></i>{{ t`使用` }}
         </button>
       </div>
     </div>

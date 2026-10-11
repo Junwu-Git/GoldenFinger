@@ -13,7 +13,7 @@ export const SystemSkillEffect = z.object({
 
 export type SystemSkillEffect = z.infer<typeof SystemSkillEffect>;
 
-/** 系统专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒，纯剧情能力；可附加被动数值效果 effect（见 SystemSkillEffect） */
+/** 系统专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒的剧情能力；可附加被动数值效果 effect（见 SystemSkillEffect） */
 export const SystemSkill = z.object({
   name: z.string().min(1).max(24),
   description: z.string().min(1).max(300),
@@ -44,7 +44,7 @@ export const SystemDef = z.object({
   worldview: z.string().default(''),
   /** 宿主长期目标：跨越单条剧情的追求，让生成内容不必只围绕当前场景展开 */
   goal: z.string().default(''),
-  /** 该系统可觉醒的专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒（纯剧情能力，注入给 AI 在剧情里施展） */
+  /** 该系统可觉醒的专属技能：宿主 Lv ≥ unlockLevel 时自动觉醒（剧情能力注入给 AI 施展，可附小额被动加成） */
   skills: z.array(SystemSkill).default([]),
   /** 等级称号，下标为 level-1，超出后显示 Lv.N */
   levelNames: z.array(z.string()).default([]),
@@ -228,6 +228,33 @@ export type LogKind = LogEntry['kind'];
 
 // #endregion
 
+// #region 被动身心状态
+
+/** 被动身心状态：不受宿主主观控制的身体/精神/生理状态（受伤/寒冷/生病/生理反应/贤者模式等），
+ *  由状态提取器按剧情维护 + 玩家手动增删，注入给正文 AI 与任务生成持续感知 */
+export const PassiveState = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(24),
+  kind: z.enum(['body', 'mind', 'physio']).default('body').catch('body'),
+  intensity: z.number().int().min(1).max(3).default(1).catch(1),
+  /** 来历一句话（雪夜赶路着凉） */
+  note: z.string().max(60).default('').catch(''),
+  /** 剩余 AI 回复数（自动消退倒计时）；null = 无自动消退，由提取器判定解除才移除 */
+  remainingFloors: z.number().int().min(0).nullable().default(null),
+  source: z.enum(['auto', 'manual']).default('auto'),
+});
+
+export type PassiveState = z.infer<typeof PassiveState>;
+export type PassiveStateKind = PassiveState['kind'];
+
+/** 强度名（1 轻微 / 2 明显 / 3 严重） */
+export const INTENSITY_NAMES: Record<number, string> = { 1: '轻微', 2: '明显', 3: '严重' };
+
+/** 类别名 */
+export const KIND_NAMES: Record<PassiveStateKind, string> = { body: '身体', mind: '精神', physio: '生理' };
+
+// #endregion
+
 /** 每个聊天独立保存的游玩状态，存于聊天元数据（chat_metadata）中，随聊天文件走 */
 export const GameState = z
   .object({
@@ -245,11 +272,13 @@ export const GameState = z
     learnedSkills: z.array(LearnedSkill).max(50).default([]),
     /** 身体改造数值属性（使用 attribute 类物品后 upsert，面板展示 + 注入 AI） */
     attributes: z.array(BodyAttribute).max(50).default([]),
+    /** 被动身心状态（受伤/寒冷/生病等非主观状态，状态提取器 + 手动维护） */
+    passiveStates: z.array(PassiveState).max(20).default([]),
+    /** 已发放的状态序号，用于生成 S001 之类的 id */
+    stateCounter: z.number().int().default(0).catch(0),
     log: z.array(LogEntry).max(80).default([]),
     /** 距上次发布任务收到的 AI 回复数（自动发布用） */
     msgCounter: z.number().int().default(0).catch(0),
-    /** 距上次判定收到的 AI 回复数（自动判定用） */
-    judgeMsgCounter: z.number().int().default(0).catch(0),
     /** 商店货架；null = 从未开店（首次进店免费生成） */
     shop: ShopState.nullable().default(null),
     /** 每日签到日历记录：lastSignInDate = 最近一次签到的本地日期（YYYY-MM-DD），streak = 连续签到天数 */

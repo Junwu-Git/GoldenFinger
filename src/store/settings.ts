@@ -31,7 +31,20 @@ import { validateInplace } from '@/util/zod';
  * - v10 → v11：世界书对齐 choice 四态——旧 worldBookOverrides（off/force/default）改名 worldBookModes（default→follow），
  *   并初始化新的逐条覆盖/显式启用/全局排除空字段。
  * - v14 → v15：新增 hiddenInjectionMode（隐藏模式）空字段，zod 兜底，无数据搬运。
+ * - v15 → v16：被动状态追踪——给注入域 status 模块补 {{passiveStates}} 行（缺才补）；设置字段 zod 兜底，无数据搬运。
+ * - v16 → v17：移除预填充开关 prefillEnabled——模块一律按自身 role 发送，无降级开关。
+ * - v17 → v18：判定与状态提取合并为一次后台维护请求——autoJudgeInterval/passiveStateInterval 收敛为
+ *   maintenanceInterval（取原判定间隔）；货架契约改为 {system,character} 双区对象，商店模块按新默认刷新（启停保留）。
+ * - v18 → v19：预填充收尾——删除「应答声明」（gen_ack/shop_ack，预填充时代的重复应答语，职责已由系统定位的
+ *   输出纪律与生成请求覆盖，还会诱发弱模型「收到/本轮执行……」式复读）；「思维链预填」改「思维链起手」：
+ *   内容仍是旧默认字面量的模块换指令式文案并把 assistant 改 system（不依赖模型预填充能力；想用预填充把模块角色改回 assistant）。
  * 生成域重建只重排生成域，注入域模块原样保留；custom_* 与未知 id 的生成模块保留在末尾。
+ * - v19 → v20：后台维护节奏改为每轮即时——自动判定与状态提取都每条 AI 回复执行（双开合并为一次请求），
+ *   maintenanceInterval 间隔字段删除（失败重试由内存态退避冷却兜底）。
+ * - v20 → v21：新增悬浮球位置 bubblePos（zod 兜底，无数据搬运）。
+ * - v21 → v22：面板开合改为运行时状态（core/ui-state.ts），panelVisible 字段删除——
+ *   开合随会话走不落盘，刷新后面板默认收起；就地 delete 的原因同 v17。
+ * - v22 → v23：新增界面显示开关 bubbleEnabled / chatStateHud（悬浮球、聊天内状态条），zod 兜底，无数据搬运。
  */
 /** 生成域已移除的内置模块 id：迁移时从用户存档中丢弃（并入新槽位/模块） */
 const REMOVED_GENERATE_IDS = new Set([
@@ -69,6 +82,29 @@ function rebuildGenerateDefaults(migrated: Record<string, unknown>): void {
   }
   migrated.promptModules = [...injectModules, ...rebuiltGen];
 }
+/** 按当前 DEFAULT_SHOP_MODULES 重建商店模板默认模块（幂等）：保留 enabled 与 custom/未知 id。
+ *  契约形态变更（单数组 → {system,character} 双区对象）时刷新内置模块内容，用户自定义内容随之对齐新契约 */
+function rebuildShopDefaults(migrated: Record<string, unknown>): void {
+  const modules = Array.isArray(migrated.shopPromptModules) ? (migrated.shopPromptModules as unknown[]) : [];
+  const defIds = new Set(DEFAULT_SHOP_MODULES.map(def => def.id));
+  const rebuilt: unknown[] = [];
+  for (const def of DEFAULT_SHOP_MODULES) {
+    const old = modules.find(mod => (mod as { id?: string })?.id === def.id);
+    rebuilt.push(
+      old
+        ? { ...structuredClone(def), enabled: (old as { enabled?: boolean }).enabled !== false }
+        : structuredClone(def),
+    );
+  }
+  for (const mod of modules) {
+    const id = (mod as { id?: string })?.id;
+    if (!id || !defIds.has(id)) {
+      rebuilt.push(mod); // custom/未知 id 保留
+    }
+  }
+  migrated.shopPromptModules = rebuilt;
+}
+
 function migrateSettings(raw: unknown): unknown {
   const data = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const version = typeof data.schema_version === 'number' ? data.schema_version : 0;
@@ -213,6 +249,90 @@ function migrateSettings(raw: unknown): unknown {
       }
       return module;
     });
+  }
+  if (version < 16) {
+    // 被动状态追踪：给注入域 status 模块补「身心状态」行（缺 {{passiveStates}} 才补，避免覆盖已自定义内容）
+    migrated.promptModules = (Array.isArray(migrated.promptModules) ? migrated.promptModules : []).map(module => {
+      const id = (module as { id?: string })?.id;
+      const content = (module as { content?: string })?.content;
+      if (id === 'status' && typeof content === 'string' && !content.includes('{{passiveStates}}')) {
+        return { ...module, content: `${content}\n{{passiveStates}}` };
+      }
+      return module;
+    });
+  }
+  if (version < 17) {
+    // 移除预填充开关：模块一律按自身 role 发送。字段已从 schema 删除，但 validateInplace 用 _.assign
+    // 就地合并回原对象，旧键仍会残留在运行时对象里并被 deep watch 继续落盘，必须就地 delete 才清干净。
+    delete migrated.prefillEnabled;
+  }
+  if (version < 18) {
+    // 后台维护合并：判定与状态提取共用一次请求与节奏——间隔取原判定间隔（缺省 3），删除两个旧间隔字段。
+    const oldInterval = migrated.autoJudgeInterval;
+    migrated.maintenanceInterval =
+      typeof oldInterval === 'number' && Number.isFinite(oldInterval)
+        ? _.clamp(Math.round(oldInterval), 1, 50)
+        : 3;
+    delete migrated.autoJudgeInterval;
+    delete migrated.passiveStateInterval;
+    // 货架契约改为 {system,character} 双区对象：商店模块按新默认刷新（启停保留，custom 保留在末尾）
+    rebuildShopDefaults(migrated);
+  }
+  if (version < 19) {
+    // 预填充收尾：删「应答声明」——shop_ack 在上面的 rebuildShopDefaults 里是「未知 id 保留」的漏网鱼，
+    // 必须在此统一剔除（rebuild 后执行，顺序不能换）；「思维链预填」→「思维链起手」：exact-match
+    //（内容 === 旧默认字面量才换文案并随改角色，用户自定义过的内容/角色不动），名称只按旧默认名改；
+    // 新文案取自当前 DEFAULT（单一事实源，迁移终态零漂移）。
+    const OLD_PREFILL_CONTENT: Record<string, string> = {
+      gen_prefill: '收到，开始梳理剧情与任务方向。\n\n<thinking>\n',
+      shop_prefill: '收到，开始梳理货架方向。\n\n<thinking>\n',
+    };
+    const newContentById = new Map(
+      [...DEFAULT_PROMPT_MODULES, ...DEFAULT_SHOP_MODULES].map(mod => [mod.id, mod.content]),
+    );
+    const fixPrefillModules = (modules: unknown[]): unknown[] =>
+      modules
+        .filter(mod => {
+          const id = (mod as { id?: string })?.id;
+          return id !== 'gen_ack' && id !== 'shop_ack';
+        })
+        .map(mod => {
+          const m = mod as { id?: string; name?: string; role?: string; content?: string };
+          if (m.id !== 'gen_prefill' && m.id !== 'shop_prefill') return mod;
+          const fixed = { ...m };
+          if (fixed.name === '思维链预填') fixed.name = '思维链起手';
+          if (fixed.content === OLD_PREFILL_CONTENT[fixed.id ?? '']) {
+            fixed.content = newContentById.get(fixed.id!) ?? fixed.content;
+            if (fixed.role === 'assistant') fixed.role = 'system';
+          }
+          return fixed;
+        });
+    if (Array.isArray(migrated.promptModules)) {
+      migrated.promptModules = fixPrefillModules(migrated.promptModules);
+    }
+    if (Array.isArray(migrated.shopPromptModules)) {
+      migrated.shopPromptModules = fixPrefillModules(migrated.shopPromptModules);
+    }
+    // 模板预设快照同步清理（同 choice v72 处理 prompt_configs 的动机）：漏掉的话「加载预设」
+    // 会把 gen_ack/旧版 gen_prefill 原样复活回当前激活集
+    const presets = migrated.promptTemplatePresets;
+    if (typeof presets === 'object' && presets !== null) {
+      for (const snapshot of Object.values(presets as Record<string, unknown>)) {
+        if (typeof snapshot !== 'object' || snapshot === null) continue;
+        const snap = snapshot as Record<string, unknown>;
+        if (Array.isArray(snap.promptModules)) snap.promptModules = fixPrefillModules(snap.promptModules);
+        if (Array.isArray(snap.shopPromptModules)) snap.shopPromptModules = fixPrefillModules(snap.shopPromptModules);
+      }
+    }
+  }
+  if (version < 20) {
+    // 后台维护节奏改为每轮即时（判定与状态提取都每条 AI 回复执行，双开合并为一次请求）：
+    // 间隔设置失去意义，字段删除；失败重试改由内存态退避冷却兜底。就地 delete 的原因同 v17。
+    delete migrated.maintenanceInterval;
+  }
+  if (version < 22) {
+    // 面板开合改为运行时状态（core/ui-state.ts），不再落盘；就地 delete 的原因同 v17。
+    delete migrated.panelVisible;
   }
   return migrated;
 }

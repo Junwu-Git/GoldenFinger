@@ -4,10 +4,11 @@ import { z } from 'zod';
 import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
 import { buildCharSlots, buildPersonaContext, buildWorldInfoSlots } from '@/core/context-builder';
 import { parseJsonFromText } from '@/core/json';
-import { buildVars, fillVars } from '@/core/prompt-vars';
+import { buildVars, fillVars, passiveStateText } from '@/core/prompt-vars';
 import { type BodyAttribute, type GameState, ParsedTask, type SystemDef } from '@/type/game';
 import { todayDateStr } from '@/util/date';
 import {
+  CHARACTER_SHELF_BLOCK,
   DEFAULT_GENERATE_MODULES,
   DEFAULT_SHOP_MODULES,
   type PromptModule,
@@ -53,12 +54,9 @@ async function composeMessages(
   const charSlots = buildCharSlots(settings);
   const worldSlots = await buildWorldInfoSlots(settings);
 
-  // 预填开关关闭时 assistant 模块降级为 system（同 choice 的 prefill_enabled 兜底），顺序不变；
-  // chat_history 的聊天楼层不在此列（保留真实 user/assistant 角色，见下方特殊展开）
-  const prefillOn = settings.prefillEnabled;
   const msgs: ChatMsg[] = [];
   for (const module of modules) {
-    // chat_history 特殊：按楼层展开为逐条真实 user/assistant 聊天消息（不逐条截断、不随 prefill 降级）
+    // chat_history 特殊：按楼层展开为逐条真实 user/assistant 聊天消息（不逐条截断）
     if (module.marker && module.id === 'chat_history') {
       const floors = buildChatFloors(
         settings.contextMode,
@@ -85,8 +83,8 @@ async function composeMessages(
     if (!content?.trim()) {
       continue;
     }
-    const role = !prefillOn && module.role === 'assistant' ? 'system' : module.role;
-    msgs.push({ role, content: substituteParams(content) });
+    // 模块一律按自身 role 发送（无预填充开关；想用预填充把模块角色改为 assistant 即可）
+    msgs.push({ role: module.role, content: substituteParams(content) });
   }
 
   // 合并相邻同 role；user 永不合并（同 choice：user 代表独立输入边界，防止聊天 user 层混进任务指令）
@@ -119,73 +117,21 @@ export async function composeTaskMessages(
   );
 }
 
-/** 商店货架生成请求（shop 生成域模块）；供生成货架与商店生成请求预览 */
+/** 商店货架生成请求（shop 生成域模块）；供生成货架与商店生成请求预览。
+ *  {{characterShelf}}：角色专属货架区块指令（characterShopEnabled 开启时展开，关闭时为空——模型省略 character 区） */
 export async function composeShopMessages(
   system: SystemDef,
   gameState: GameState,
   settings: Settings,
 ): Promise<ChatMsg[]> {
-  return composeMessages(system, gameState, settings, pickModules(settings, 'shop'), {}, 'shop');
-}
-
-/**
- * 独立判定请求（不依赖主 AI 在正文写标记）：把「系统裁定契约 + 最近剧情楼层 + 进行中任务清单」发给 API，
- * 让其逐条裁决完成/失败。契约 system → 真实剧情楼层 → user 请求；判定是玩家侧一条独立的结算路径。
- */
-export function composeJudgeMessages(system: SystemDef, gameState: GameState, settings: Settings): ChatMsg[] {
-  const vars = buildVars(system, gameState);
-  const contract = substituteParams(
-    fillVars(
-      [
-        '你是绑定于主角{{user}}的「{{systemName}}」任务裁定者。你唯一要做的事：对照最近剧情，逐条裁决进行中的任务完成/失败。',
-        '判定纪律：',
-        '- 只有剧情里明确可见「做成」才给 completed；剧情明确「已无法完成」才给 failed；证据不足、仍在推进的任务不要输出（保持进行中）。',
-        '- 一个任务最多判定一次；不要对进行中任务列表之外的编号下结论。',
-        '- 只输出 JSON 数组，形如 [{"id":"T001","status":"completed"}]，除此之外一字不写。',
-        '先输出 <thinking> 自检，再输出 JSON 数组。',
-      ].join('\n'),
-      vars,
-    ),
+  return composeMessages(
+    system,
+    gameState,
+    settings,
+    pickModules(settings, 'shop'),
+    { characterShelf: settings.characterShopEnabled ? CHARACTER_SHELF_BLOCK : '' },
+    'shop',
   );
-  const activeTasks = gameState.tasks.filter(task => task.status === 'active');
-  const list =
-    activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('\n') ||
-    '（当前没有进行中的任务）';
-  const request = substituteParams(
-    fillVars(`【进行中任务】\n${list}\n\n请对照最近剧情，逐条裁决这些任务的完成/失败，只输出 JSON 数组。`, vars),
-  );
-
-  const floors = buildChatFloors(
-    settings.contextMode,
-    settings.contextRounds,
-    settings.storyFilterRules,
-    settings.stRegexEnabled,
-  );
-  const msgs: ChatMsg[] = [{ role: 'system', content: contract }];
-  if (floors.length > 0) {
-    msgs.push(...floors);
-  }
-  msgs.push({ role: 'user', content: request });
-  return msgs;
-}
-
-/** 判定结果契约：只列出本次已可结算的进行中任务 */
-const VERDICT_SCHEMA = z.array(z.object({ id: z.string(), status: z.enum(['completed', 'failed']) })).max(20);
-
-/** 调用独立判定 API，返回已裁决的 {id, status} 表（纯函数：不碰状态，由 store 结算；对非 active 任务幂等） */
-export async function adjudicateTasks(
-  system: SystemDef,
-  gameState: GameState,
-  settings: Settings,
-): Promise<Array<{ id: string; status: 'completed' | 'failed' }>> {
-  const messages = composeJudgeMessages(system, gameState, settings);
-  const raw = await requestTaskCompletion({ messages, mainResponseLength: settings.api.maxTokens });
-  const parsed = parseJsonFromText(raw, VERDICT_SCHEMA, '[');
-  if (!parsed) {
-    console.error('[GoldenFinger] 判定 API 原始输出：', raw);
-    throw new Error(t`AI 没有返回有效的判定结果，请重试`);
-  }
-  return parsed;
 }
 
 /** 生成域模块：域被删空时回落默认模板；全禁用是明确意图，组装出空请求由调用方报错 */
@@ -228,7 +174,9 @@ function markerContent(
         `宿主等级：Lv.${gameState.level}`,
         `持有货币：${gameState.currencyName} ×${gameState.points}`,
         ...(gameState.inventory.length
-          ? [`持有物品：${gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')}`]
+          ? [
+              `持有物品：${gameState.inventory.map(item => `${item.name}×${item.count}`).join('、')}（宿主原有的其他物品不受此清单影响，照常携带）`,
+            ]
           : []),
         `进行中的任务：${activeTasks.map(task => `${task.id}《${task.title}》（${task.requirements}）`).join('；') || '无'}`,
         ...(unlockedSkills.length
@@ -241,6 +189,9 @@ function markerContent(
           ? [
               `身体状态：${gameState.attributes.map(attr => `${attr.target ? `${attr.target}·` : ''}${attr.name} ${attrDisplay(attr)}`).join('、')}`,
             ]
+          : []),
+        ...(gameState.passiveStates.length
+          ? [`宿主身心状态（发布任务时结合这些状态）：\n${passiveStateText(gameState.passiveStates)}`]
           : []),
       ];
       // 每日签到系统：把今日签到状态喂给生成端，避免 AI 重复发同一签到任务
@@ -311,7 +262,7 @@ function visibleStoryFloors(mode: 'visible_only' | 'rounds', rounds: number): St
  * 逐条过酒馆正则 + 本页过滤规则，空层丢弃；末条 assistant 包 <current_scene> 作当前场景锚定
  * （同 choice 的场景锚定，生成请求里「以 <current_scene> 标记的最新进展为准」与它呼应；无 assistant 时回退末条）。
  */
-function buildChatFloors(
+export function buildChatFloors(
   mode: 'visible_only' | 'rounds',
   rounds: number,
   filterRules: StoryFilterRule[],

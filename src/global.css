@@ -15,6 +15,24 @@
 
   --gf-border: rgba(255, 255, 255, 0.09);
   --gf-border-strong: rgba(255, 255, 255, 0.16);
+  /* 交互强调边（输入框聚焦/激活描边），对齐 choice 的 border-active 档 */
+  --gf-border-active: color-mix(in srgb, var(--gf-accent) 40%, transparent);
+
+  /* 悬停/激活底：散落的 rgba 白底高亮收敛成 token（choice 的 bg-hover/bg-active 档） */
+  --gf-bg-hover: rgba(255, 255, 255, 0.09);
+  --gf-bg-active: color-mix(in srgb, var(--gf-accent) 12%, transparent);
+
+  /* 磨砂高光：容器上边缘的受光线，实色模拟雾面层次，不依赖 blur（同 choice） */
+  --gf-frost-line: rgba(255, 255, 255, 0.07);
+
+  /* 投影三档 + 状态色过渡（choice 同构）：浮起层次统一从这里取 */
+  --gf-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --gf-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --gf-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.55);
+
+  /* 过渡双轨：普通属性走 150ms，浮起/滑入等运动类走带缓动的 motion 档（同 choice） */
+  --gf-transition: 150ms ease;
+  --gf-transition-motion: 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --gf-radius-sm: 6px;
   --gf-radius-md: 10px;
@@ -35,6 +53,16 @@
 
   --gf-accent: #8b5cf6;
   --gf-z-panel: 30000;
+
+  /* 危险/警示色（严重状态强度等）+ 柔和底 */
+  --gf-danger: #e05252;
+  --gf-danger-soft: rgba(224, 82, 82, 0.16);
+
+  /* 成功/金（货币与奖励向强调）+ 柔和底：散落的红绿金硬编码都收敛到这三个 token */
+  --gf-ok: #3aa675;
+  --gf-ok-soft: rgba(58, 166, 117, 0.18);
+  --gf-gold: #ffd479;
+  --gf-gold-soft: rgba(255, 212, 121, 0.1);
 
   --gf-font-mono: 'Cascadia Code', Consolas, monospace;
 }
@@ -57,11 +85,62 @@
   overflow: hidden;
   color: var(--gf-text-0);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   background: linear-gradient(168deg, var(--gf-bg-0), color-mix(in srgb, var(--gf-accent) 9%, var(--gf-bg-0)));
   border: 1px solid color-mix(in srgb, var(--gf-accent) 42%, transparent);
   box-shadow:
-    0 10px 36px rgba(0, 0, 0, 0.55),
+    var(--gf-shadow-lg),
+    inset 0 1px 0 var(--gf-frost-line),
     0 0 16px color-mix(in srgb, var(--gf-accent) 18%, transparent);
+  /* v-show 重新显示时动画会重放：每次打开面板都有轻弹入 */
+  animation: gf-panel-in 0.22s ease;
+}
+
+@keyframes gf-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+/* 焦点可见性与控件主题化：键盘导航有迹可循，勾选框/光标跟随系统主题色 */
+.gf-panel :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gf-accent) 65%, transparent);
+  outline-offset: 1px;
+}
+
+.gf-panel ::selection {
+  background: color-mix(in srgb, var(--gf-accent) 38%, transparent);
+}
+
+.gf-panel input[type='checkbox'],
+.gf-panel input[type='radio'] {
+  accent-color: var(--gf-accent);
+}
+
+.gf-panel input,
+.gf-panel textarea {
+  caret-color: var(--gf-accent);
+}
+
+/* 面板内滚动条统一细窄主题色（scrollbar-color 会继承给 Firefox） */
+.gf-panel {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--gf-accent) 38%, transparent) transparent;
+}
+
+.gf-panel ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.gf-panel ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--gf-accent) 38%, transparent);
+  border-radius: 3px;
+}
+
+.gf-panel ::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .gf-panel-header {
@@ -110,6 +189,12 @@
   font-weight: 600;
 }
 
+/* 横幅余额的金币图标：替代 emoji 货币符，与 FA 图标体系一致 */
+.gf-banner-coin {
+  font-size: 11px;
+  color: var(--gf-gold);
+}
+
 .gf-banner-dot {
   margin: 0 3px;
   opacity: 0.5;
@@ -155,13 +240,17 @@
   padding: 3px 7px;
   border-radius: var(--gf-radius-sm);
   transition:
-    color 0.15s,
-    background 0.15s;
+    color var(--gf-transition),
+    background var(--gf-transition);
 }
 
 .gf-icon-btn:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--gf-bg-hover);
+}
+
+.gf-icon-btn:active {
+  transform: scale(0.92);
 }
 
 /* ===== 标签栏 ===== */
@@ -200,6 +289,11 @@
 .gf-tab.active {
   color: color-mix(in srgb, var(--gf-accent) 55%, #fff);
   border-bottom-color: var(--gf-accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gf-accent) 10%, transparent), transparent);
+}
+
+.gf-tab.active i {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--gf-accent) 55%, transparent));
 }
 
 /* ===== 配置页二级子区条（choice 式分段控件） ===== */
@@ -249,15 +343,6 @@
   padding: var(--gf-space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-.gf-panel-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.gf-panel-body::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--gf-accent) 38%, transparent);
-  border-radius: 3px;
 }
 
 /* 标签切换过渡 */
@@ -323,7 +408,9 @@
 
 .gf-empty-icon {
   font-size: 26px;
-  opacity: 0.4;
+  opacity: 0.5;
+  color: color-mix(in srgb, var(--gf-accent) 45%, var(--gf-text-2));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--gf-accent) 30%, transparent));
 }
 
 .gf-empty-small {
@@ -389,12 +476,17 @@
   border: 1px solid color-mix(in srgb, var(--gf-accent) 35%, transparent);
   transition:
     border-color 0.15s,
-    color 0.15s;
+    color 0.15s,
+    transform 0.1s;
 }
 
 .gf-secondary-btn:hover:not(:disabled) {
   border-color: var(--gf-accent);
   color: var(--gf-text-0);
+}
+
+.gf-secondary-btn:active:not(:disabled) {
+  transform: scale(0.99);
 }
 
 .gf-secondary-btn:disabled {
@@ -413,28 +505,96 @@
   border: 1px solid transparent;
   background: var(--gf-bg-2);
   color: var(--gf-text-1);
-  transition: background 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+/* 默认 hover 走主题色淡底；ok/bad 变体在下方覆盖为各自色 */
+.gf-mini-btn:hover:not(:disabled) {
+  background: var(--gf-bg-active);
+  color: var(--gf-text-0);
 }
 
 .gf-mini-btn.ok {
-  border-color: rgba(58, 166, 117, 0.5);
+  border-color: color-mix(in srgb, var(--gf-ok) 55%, transparent);
 }
 
 .gf-mini-btn.ok:hover:not(:disabled) {
-  background: rgba(58, 166, 117, 0.25);
+  background: color-mix(in srgb, var(--gf-ok) 22%, transparent);
 }
 
 .gf-mini-btn.bad {
-  border-color: rgba(224, 86, 86, 0.5);
+  border-color: color-mix(in srgb, var(--gf-danger) 55%, transparent);
 }
 
 .gf-mini-btn.bad:hover:not(:disabled) {
-  background: rgba(224, 86, 86, 0.25);
+  background: color-mix(in srgb, var(--gf-danger) 22%, transparent);
 }
 
 .gf-mini-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ===== ST 原生控件接管（同 choice 的 theme.css 思路） ===== */
+/* 面板复用了酒馆的 .menu_button / .text_input：这些控件跟随酒馆主题配色，酒馆切亮色
+   主题时会在暗色玻璃面板里露出白盒浅字（实测 text_input 白底配 rgb(220,220,210) 浅字，
+   几乎不可读）。限域 .gf-panel 接管颜色三件套，字号压缩照旧（ST 给它们钉了跟随正文
+   字号的字号，会撑爆面板布局） */
+.gf-panel .text_input {
+  color: var(--gf-text-0);
+  background-color: var(--gf-bg-2);
+  border: 1px solid var(--gf-border-strong);
+}
+
+.gf-panel .text_input::placeholder {
+  color: var(--gf-text-2);
+  opacity: 1;
+}
+
+.gf-panel .text_input:focus {
+  border-color: var(--gf-border-active);
+  outline: none;
+}
+
+/* select 展开的 option 在部分浏览器吃系统样式，至少把墨色钉住 */
+.gf-panel select.text_input option,
+.gf-panel select.text_input optgroup {
+  color: var(--gf-text-0);
+  background-color: var(--gf-bg-0);
+}
+
+.gf-panel .menu_button {
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--gf-text-1);
+  background-color: var(--gf-bg-1);
+  border: 1px solid var(--gf-border);
+  text-shadow: none;
+  box-shadow: none;
+  transition:
+    color var(--gf-transition),
+    background-color var(--gf-transition),
+    border-color var(--gf-transition);
+}
+
+.gf-panel .menu_button:hover {
+  color: var(--gf-text-0);
+  background-color: var(--gf-bg-hover);
+  border-color: var(--gf-border-strong);
+}
+
+.gf-panel .menu_button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gf-panel input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.gf-panel select,
+.gf-panel textarea {
+  font-size: 13px;
 }
 
 /* ===== 首页 ===== */
@@ -474,6 +634,7 @@
   height: 6px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -481,6 +642,7 @@
   height: 100%;
   border-radius: 3px;
   background: linear-gradient(90deg, var(--gf-accent), color-mix(in srgb, var(--gf-accent) 50%, #fff));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--gf-accent) 45%, transparent);
   transition: width 0.4s ease;
 }
 
@@ -524,11 +686,11 @@
 }
 
 .gf-task.closed.completed {
-  border-left-color: #3aa675;
+  border-left-color: var(--gf-ok);
 }
 
 .gf-task.closed.failed {
-  border-left-color: #e05656;
+  border-left-color: var(--gf-danger);
 }
 
 .gf-task-head {
@@ -552,7 +714,7 @@
 }
 
 .gf-task-stars {
-  color: #ffd479;
+  color: var(--gf-gold);
   font-size: 11px;
   letter-spacing: 1px;
   flex-shrink: 0;
@@ -567,14 +729,14 @@
 
 .gf-task.closed.completed .gf-task-badge,
 .gf-task-badge.completed {
-  color: #7fd6ab;
-  background: rgba(58, 166, 117, 0.18);
+  color: color-mix(in srgb, var(--gf-ok) 65%, #fff);
+  background: var(--gf-ok-soft);
 }
 
 .gf-task.closed.failed .gf-task-badge,
 .gf-task-badge.failed {
-  color: #f0a3a3;
-  background: rgba(224, 86, 86, 0.18);
+  color: color-mix(in srgb, var(--gf-danger) 65%, #fff);
+  background: var(--gf-danger-soft);
 }
 
 .gf-task-desc {
@@ -603,7 +765,7 @@
 }
 
 .gf-deadline-urgent {
-  color: #e05656;
+  color: var(--gf-danger);
   font-weight: 600;
 }
 
@@ -639,8 +801,11 @@
 }
 
 .gf-shop-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-weight: 700;
-  color: #ffd479;
+  color: var(--gf-gold);
   font-size: 14px;
   white-space: nowrap;
 }
@@ -720,6 +885,13 @@
   border: 1px solid var(--gf-border);
   border-left: 3px solid var(--gf-rarity-1);
   animation: gf-pop-in 0.25s ease backwards;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.gf-shop-item:hover {
+  transform: translateY(-2px);
 }
 
 .gf-shelf-grid .gf-shop-item:nth-child(2) {
@@ -784,6 +956,19 @@
   box-shadow: 0 0 12px var(--gf-rarity-3-soft);
 }
 
+/* 悬停辉光按稀有度着色 */
+.gf-shop-item.rarity-1:hover {
+  box-shadow: 0 2px 10px var(--gf-rarity-1-soft);
+}
+
+.gf-shop-item.rarity-2:hover {
+  box-shadow: 0 2px 12px var(--gf-rarity-2-soft);
+}
+
+.gf-shop-item.rarity-3:hover {
+  box-shadow: 0 2px 16px var(--gf-rarity-3-soft);
+}
+
 .gf-shop-item-head {
   display: flex;
   align-items: center;
@@ -838,21 +1023,24 @@
 }
 
 .gf-price-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--gf-font-mono);
   font-size: 12px;
   font-weight: 600;
-  color: #ffd479;
-  background: rgba(255, 212, 121, 0.1);
-  border: 1px solid rgba(255, 212, 121, 0.3);
+  color: var(--gf-gold);
+  background: var(--gf-gold-soft);
+  border: 1px solid color-mix(in srgb, var(--gf-gold) 30%, transparent);
   border-radius: 999px;
   padding: 1px 8px;
   white-space: nowrap;
 }
 
 .gf-price-pill.poor {
-  color: #f0a3a3;
-  border-color: rgba(224, 86, 86, 0.4);
-  background: rgba(224, 86, 86, 0.08);
+  color: color-mix(in srgb, var(--gf-danger) 65%, #fff);
+  border-color: color-mix(in srgb, var(--gf-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--gf-danger) 8%, transparent);
 }
 
 .gf-stock {
@@ -862,7 +1050,7 @@
 }
 
 .gf-stock.out {
-  color: #f0a3a3;
+  color: color-mix(in srgb, var(--gf-danger) 65%, #fff);
 }
 
 .gf-refresh-btn {
@@ -899,7 +1087,7 @@
 .gf-bag-count {
   font-family: var(--gf-font-mono);
   font-size: 12px;
-  color: #ffd479;
+  color: var(--gf-gold);
 }
 
 .gf-bag-item-desc {
@@ -933,7 +1121,7 @@
 }
 
 .gf-log.reward {
-  color: #ffd479;
+  color: var(--gf-gold);
 }
 
 .gf-log.levelup {
@@ -957,6 +1145,7 @@
 }
 
 .gf-system-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -977,6 +1166,22 @@
   transform: translateY(-2px);
   border-color: var(--gf-accent, #8b5cf6);
   box-shadow: 0 0 12px color-mix(in srgb, var(--gf-accent, #8b5cf6) 30%, transparent);
+}
+
+/* 当前绑定系统：常亮描边 + 勾标（模板里配 fa-circle-check） */
+.gf-system-card.current {
+  border-color: var(--gf-accent, #8b5cf6);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--gf-accent, #8b5cf6) 16%, transparent), var(--gf-bg-1));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--gf-accent, #8b5cf6) 25%, transparent);
+}
+
+.gf-system-current-mark {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+  color: var(--gf-accent, #8b5cf6);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--gf-accent, #8b5cf6) 60%, transparent));
 }
 
 .gf-system-icon {
@@ -1073,7 +1278,7 @@
   color: var(--gf-text-1);
 }
 
-/* ===== 扩展设置抽屉遗留样式 ===== */
+/* ===== 自定义系统管理（设置页 CustomSystemManager）===== */
 .gf-custom-item {
   display: flex;
   align-items: center;
@@ -1096,7 +1301,7 @@
 }
 
 .gf-danger {
-  color: #e05656;
+  color: var(--gf-danger);
 }
 
 /* ===== 折叠区（已完结任务等）===== */
@@ -1113,6 +1318,26 @@
   color: var(--gf-text-1);
   user-select: none;
   padding: 3px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+}
+
+/* 隐藏原生三角，换主题色箭头：展开时旋向随开合 */
+.gf-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.gf-details summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--gf-accent);
+  transition: transform 0.15s ease;
+}
+
+.gf-details[open] > summary::before {
+  transform: rotate(90deg);
 }
 
 .gf-details summary:hover {
