@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { requestTaskCompletion, type ChatMsg } from '@/core/api-client';
 import { parseJsonFromText } from '@/core/json';
 import { buildVars, fillVars } from '@/core/prompt-vars';
-import { stateCatalogLines, stateListText, STATE_OPS_LIST_SCHEMA, STATE_OPS_SCHEMA, type StateOp } from '@/core/state-tracker';
+import {
+  stateCatalogLines,
+  stateListText,
+  STATE_OPS_LIST_SCHEMA,
+  STATE_OPS_SCHEMA,
+  type StateOp,
+} from '@/core/state-tracker';
 import { buildChatFloors } from '@/core/task-generator';
 import { type GameState, type SystemDef, type Task } from '@/type/game';
 import type { Settings } from '@/type/settings';
@@ -74,7 +80,10 @@ function composeJudgeMessages(system: SystemDef, gameState: GameState, settings:
     ),
   );
   const request = substituteParams(
-    fillVars(`【进行中任务】\n${taskListLines(gameState)}\n\n请对照最近剧情，逐条裁决这些任务的完成/失败，只输出 JSON 数组。`, vars),
+    fillVars(
+      `【进行中任务】\n${taskListLines(gameState)}\n\n请对照最近剧情，逐条裁决这些任务的完成/失败，只输出 JSON 数组。`,
+      vars,
+    ),
   );
   return appendFloors([{ role: 'system', content: contract }], { role: 'user', content: request }, settings);
 }

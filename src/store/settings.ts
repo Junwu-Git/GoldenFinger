@@ -270,9 +270,7 @@ function migrateSettings(raw: unknown): unknown {
     // 后台维护合并：判定与状态提取共用一次请求与节奏——间隔取原判定间隔（缺省 3），删除两个旧间隔字段。
     const oldInterval = migrated.autoJudgeInterval;
     migrated.maintenanceInterval =
-      typeof oldInterval === 'number' && Number.isFinite(oldInterval)
-        ? _.clamp(Math.round(oldInterval), 1, 50)
-        : 3;
+      typeof oldInterval === 'number' && Number.isFinite(oldInterval) ? _.clamp(Math.round(oldInterval), 1, 50) : 3;
     delete migrated.autoJudgeInterval;
     delete migrated.passiveStateInterval;
     // 货架契约改为 {system,character} 双区对象：商店模块按新默认刷新（启停保留，custom 保留在末尾）

@@ -4,7 +4,9 @@
     <div v-if="!system" class="gf-guide">
       <div class="gf-view-title">{{ t`当前状态` }}</div>
       <div class="gf-empty-small">
-        {{ t`绑定系统后，系统会自动从剧情提取宿主的被动身心状态（受伤、寒冷、生病、生理反应等），注入正文并在这里展示与手动管理。` }}
+        {{
+          t`绑定系统后，系统会自动从剧情提取宿主的被动身心状态（受伤、寒冷、生病、生理反应等），注入正文并在这里展示与手动管理。`
+        }}
       </div>
     </div>
 
@@ -12,12 +14,7 @@
       <div class="gf-view-title gf-title-row">
         <span>{{ t`当前状态（${game.state.passiveStates.length}）` }}</span>
         <span class="gf-state-actions">
-          <button
-            class="gf-mini-btn"
-            :disabled="game.trackingStates"
-            :title="t`立即从剧情提取`"
-            @click="extractNow"
-          >
+          <button class="gf-mini-btn" :disabled="game.trackingStates" :title="t`立即从剧情提取`" @click="extractNow">
             <i :class="game.trackingStates ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrows-rotate'"></i>
           </button>
           <button class="gf-mini-btn" :title="t`手动记录状态`" @click="adding = !adding">
@@ -90,7 +87,9 @@
       <!-- 追踪范围：与提取提示词同源（STATE_CATALOG） -->
       <GfSectionCard :title="t`追踪范围`" icon="fa-solid fa-list-check">
         <div class="gf-catalog-desc">
-          {{ t`提取只识别以下类别的被动状态。判定标准：不受宿主主观控制、剧情里有明确证据；强度 1~3 随剧情调整，会自然消退的状态带持续楼数，伤病类到剧情痊愈才解除。` }}
+          {{
+            t`提取只识别以下类别的被动状态。判定标准：不受宿主主观控制、剧情里有明确证据；强度 1~3 随剧情调整，会自然消退的状态带持续楼数，伤病类到剧情痊愈才解除。`
+          }}
         </div>
         <div v-for="group in STATE_CATALOG" :key="group.kind" class="gf-catalog-group">
           <div class="gf-catalog-kind">{{ KIND_NAMES[group.kind] }}</div>

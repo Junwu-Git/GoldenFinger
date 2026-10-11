@@ -38,10 +38,7 @@ const { settings } = storeToRefs(useSettingsStore(pinia));
 // 总开关关闭/未绑定系统时隐藏，与状态页「未绑定显示引导」的口径一致
 const visible = computed(
   () =>
-    settings.value.chatStateHud &&
-    settings.value.enabled &&
-    !!game.activeSystem &&
-    game.state.passiveStates.length > 0,
+    settings.value.chatStateHud && settings.value.enabled && !!game.activeSystem && game.state.passiveStates.length > 0,
 );
 
 // 状态条是系统入口而非某系统专属：未绑定时回落默认紫（同悬浮球）
@@ -137,7 +134,9 @@ function openStates(): void {
 
 .gf-hud-enter-active,
 .gf-hud-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .gf-hud-enter-from,

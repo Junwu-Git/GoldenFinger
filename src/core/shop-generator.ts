@@ -63,7 +63,11 @@ export async function generateShopShelf(
   throw new Error(t`AI 没有返回有效的商品 JSON，请重试`);
 }
 
-function normalizeItem(item: Omit<ShopItem, 'id' | 'category'>, index: number, category: 'system' | 'character'): ShopItem {
+function normalizeItem(
+  item: Omit<ShopItem, 'id' | 'category'>,
+  index: number,
+  category: 'system' | 'character',
+): ShopItem {
   const kind = (ITEM_KINDS as readonly string[]).includes(String(item.kind)) ? (item.kind as ShopItem['kind']) : 'item';
   const type = (EFFECT_TYPES as readonly string[]).includes(item.effect?.type)
     ? (item.effect.type as ItemEffect['type'])

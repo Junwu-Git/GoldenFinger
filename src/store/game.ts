@@ -45,7 +45,6 @@ export const useGameStore = defineStore('golden_finger_game', () => {
   const MAINTENANCE_RETRY_COOLDOWN = 3;
   const maintenanceCooldown = ref(0);
 
-
   /** reload 换入新聊天状态时抑制回写（数据本来就是从元数据读的）。注意 watch 是 pre-flush 异步触发，
    *  在 reload 里同步复位标志无效（回调执行时永远晚于复位）——标志由 watch 回调自身消费 */
   let suppressPersist = false;

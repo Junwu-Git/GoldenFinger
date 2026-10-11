@@ -177,7 +177,11 @@ onMounted(() => {
     if (panel.value?.contains(target)) {
       return;
     }
-    if (target.closest('.gf-bubble, .gf-state-hud, [data-gf-panel-toggle], #extensionsMenuButton, #extensionsMenu, dialog.popup')) {
+    if (
+      target.closest(
+        '.gf-bubble, .gf-state-hud, [data-gf-panel-toggle], #extensionsMenuButton, #extensionsMenu, dialog.popup',
+      )
+    ) {
       return;
     }
     closePanel();

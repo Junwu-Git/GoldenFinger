@@ -78,7 +78,9 @@ export type StateOp = z.infer<typeof STATE_OPS_LIST_SCHEMA>[number];
 /** 追踪范围文本（提取提示词「追踪范围」段；物质影响单独说明归属规则） */
 export function stateCatalogLines(): string[] {
   return [
-    ...STATE_CATALOG.flatMap(group => group.items.map(item => `- ${KIND_NAMES[group.kind]}｜${item.name}：${item.hint}`)),
+    ...STATE_CATALOG.flatMap(group =>
+      group.items.map(item => `- ${KIND_NAMES[group.kind]}｜${item.name}：${item.hint}`),
+    ),
     '- 物质影响｜醉酒、药物、春药等：按主导感受归入身体或生理，kind 相应取 body 或 physio。',
   ];
 }

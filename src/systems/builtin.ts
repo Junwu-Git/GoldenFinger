@@ -138,7 +138,8 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       },
       {
         name: '平行侧写',
-        description: '恍惚瞥见「另一条线上做出不同选择的自己」，从那份记忆里借来一线领悟：每次任务结算额外获得 10 点经验。',
+        description:
+          '恍惚瞥见「另一条线上做出不同选择的自己」，从那份记忆里借来一线领悟：每次任务结算额外获得 10 点经验。',
         unlockLevel: 7,
         effect: { type: 'exp', amount: 10 },
       },
@@ -218,7 +219,8 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
     skills: [
       {
         name: '财气逼人',
-        description: '出手自带排场与威慑，商贾谈价、江湖认门，先看你抖开的这副底气；出手阔绰，每次任务结算另有 3 枚挥霍点进账。',
+        description:
+          '出手自带排场与威慑，商贾谈价、江湖认门，先看你抖开的这副底气；出手阔绰，每次任务结算另有 3 枚挥霍点进账。',
         unlockLevel: 1,
         effect: { type: 'points', amount: 3 },
       },
@@ -229,7 +231,8 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       },
       {
         name: '化钱为势',
-        description: '把挥霍转成声望与人脉，花钱的场面越大，欠你人情的人越多；名声反哺钱袋，每次任务结算返 8 枚挥霍点。',
+        description:
+          '把挥霍转成声望与人脉，花钱的场面越大，欠你人情的人越多；名声反哺钱袋，每次任务结算返 8 枚挥霍点。',
         unlockLevel: 4,
         effect: { type: 'points', amount: 8 },
       },
@@ -275,7 +278,8 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       },
       {
         name: '众星拱月',
-        description: '你待人以诚，到了关键处，那些受过你真心的人会站出来维护你；人望日隆，每次任务结算额外获得 10 点经验。',
+        description:
+          '你待人以诚，到了关键处，那些受过你真心的人会站出来维护你；人望日隆，每次任务结算额外获得 10 点经验。',
         unlockLevel: 6,
         effect: { type: 'exp', amount: 10 },
       },
@@ -315,13 +319,15 @@ export const BUILTIN_SYSTEMS: SystemDef[] = [
       { name: '知节守度', description: '深谙爱与尊重的界限：再亲密也不越雷池，让对方安心地托付身心。', unlockLevel: 3 },
       {
         name: '肌理相知',
-        description: '对身体与气息的细微变化过目不忘，总能第一个察觉她今天的不同；默契凝聚，每次任务结算额外进账 4 枚魅点。',
+        description:
+          '对身体与气息的细微变化过目不忘，总能第一个察觉她今天的不同；默契凝聚，每次任务结算额外进账 4 枚魅点。',
         unlockLevel: 4,
         effect: { type: 'points', amount: 4 },
       },
       {
         name: '焕然一躯',
-        description: '在对方自愿的前提下，让身体改造的成果焕发得自然妥帖，气质与体态相得益彰；每次任务结算额外获得 10 点经验。',
+        description:
+          '在对方自愿的前提下，让身体改造的成果焕发得自然妥帖，气质与体态相得益彰；每次任务结算额外获得 10 点经验。',
         unlockLevel: 5,
         effect: { type: 'exp', amount: 10 },
       },

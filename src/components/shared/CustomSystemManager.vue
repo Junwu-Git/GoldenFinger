@@ -6,11 +6,7 @@
       <button class="menu_button menu_button_icon gf-copy" :title="t`复制系统定义`" @click="copySystem(index)">
         <i class="fa-solid fa-copy"></i>
       </button>
-      <button
-        class="menu_button menu_button_icon gf-download"
-        :title="t`导出为文件`"
-        @click="downloadSystem(index)"
-      >
+      <button class="menu_button menu_button_icon gf-download" :title="t`导出为文件`" @click="downloadSystem(index)">
         <i class="fa-solid fa-file-export"></i>
       </button>
       <button class="menu_button menu_button_icon gf-trash" :title="t`删除`" @click="removeCustomSystem(index)">
@@ -152,9 +148,7 @@
             :placeholder="t`技能描述（给 AI 的剧情施展燃料）`"
           ></textarea>
         </div>
-        <button class="menu_button" @click="addSkill">
-          <i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加技能` }}
-        </button>
+        <button class="menu_button" @click="addSkill"><i class="fa-solid fa-plus"></i>&nbsp;{{ t`添加技能` }}</button>
       </div>
       <div class="gf-editor-actions">
         <button class="menu_button" @click="saveCustomSystem">

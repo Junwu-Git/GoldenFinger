@@ -82,7 +82,9 @@ export function passiveStateText(states: PassiveState[]): string {
   }
   const cell = (text: string) => text.replace(/\|/g, '/').replace(/\n/g, ' ');
   const rows = states
-    .map(state => `| ${cell(state.name)} | ${INTENSITY_NAMES[state.intensity] ?? '轻微'} | ${cell(state.note) || '—'} |`)
+    .map(
+      state => `| ${cell(state.name)} | ${INTENSITY_NAMES[state.intensity] ?? '轻微'} | ${cell(state.note) || '—'} |`,
+    )
     .join('\n');
   return `| 状态 | 强度 | 来历 |\n|---|---|---|\n${rows}`;
 }

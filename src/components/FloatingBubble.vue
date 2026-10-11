@@ -33,7 +33,11 @@
     @pointerdown="onPointerDown"
   >
     <div class="gf-bubble-ring"></div>
-    <i :class="state === 'generating' ? 'fa-solid fa-spinner fa-spin gf-bubble-icon' : 'fa-solid fa-dice-d20 gf-bubble-icon'"></i>
+    <i
+      :class="
+        state === 'generating' ? 'fa-solid fa-spinner fa-spin gf-bubble-icon' : 'fa-solid fa-dice-d20 gf-bubble-icon'
+      "
+    ></i>
   </div>
 </template>
 
