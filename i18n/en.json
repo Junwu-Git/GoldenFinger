@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "（系统没有留下描述）": "(The system left no description)",
   "「${0}」上了一批新货（第${1}批）": "\"${0}\" restocked a new shelf (batch ${1})",
   "「${0}」已绑定到本聊天！": "\"${0}\" has been bound to this chat!",
@@ -347,4 +348,9 @@
   "聊天内显示身心状态": "Show conditions in chat",
   "有被动状态时，聊天区顶部悬浮一条状态条，点击直达状态页。": "When passive conditions exist, a strip floats at the top of the chat area; click it to open the States page.",
   "宿主身心状态（点击打开状态页）": "Host conditions (click to open the States page)"
+=======
+  "插件示例": "Plugin Example",
+  "示例按钮": "Example Button",
+  "示例开关": "Example Switch"
+>>>>>>> 264885c4203dbca2fa91f1eba84fff4c32876283
 }
