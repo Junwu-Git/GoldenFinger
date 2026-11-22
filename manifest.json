@@ -1,13 +1,23 @@
 {
+<<<<<<< HEAD
   "display_name": "金手指系统",
+=======
+  "display_name": "<插件名称>",
+>>>>>>> abb9f678dad403a4a6c4a4c6bb91c940791a412d
   "loading_order": 120,
   "requires": [],
   "optional": [],
   "js": "dist/index.js",
   "css": "dist/index.css",
+<<<<<<< HEAD
   "author": "Junwu",
   "version": "1.0.0",
   "homePage": "https://github.com/Junwu-Git/GoldenFinger",
+=======
+  "author": "<作者名称>",
+  "version": "1.0.0",
+  "homePage": "<仓库URL>",
+>>>>>>> abb9f678dad403a4a6c4a4c6bb91c940791a412d
   "auto_update": true,
   "i18n": {
     "en": "i18n/en.json"
